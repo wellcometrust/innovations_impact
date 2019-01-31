@@ -34,7 +34,53 @@ param_user_all = pd.read_csv("LTLI_parameters_python.csv")
 param_user_all = param_user_all.set_index("id_code")
 param_user_dict = {code : param_user_all.loc[code] 
                    for code in param_user_all.index.tolist()}
-#
+
+# Importing the relevant population data
+population = pd.read_csv("GBD_population_2016_reshaped.csv")
+
+# Subset the most relevant columns - this list could be updated to capture other 
+# relevant age groups - they presently capture infants, young children, children/
+# adolescents, working age people and then retired people
+pop_columns = ['location_name', 'Both_<1 year', 'Both_1 to 4',
+               'Both_5-14 years', 'Both_15-49 years', 'Both_50-69 years',
+               'Both_70+ years']
+
+population = population.loc[:, pop_columns]
+
+# Merge two of the columns to make a more relevant one
+population.insert(loc = 5, column =  'Both_15-69 years', 
+                  value = (population['Both_15-49 years'] + population['Both_50-69 years']))
+
+# Remove the merged columns 
+pop_new_columns = [column for column in list(population) if not column in ['Both_15-49 years', 'Both_50-69 years']]
+
+population = population[pop_new_columns]
+
+# Rename columns to more consistent / intuitive names
+pop_new_names = {'location_name' : 'country', 'Both_<1 year' : 'pop_0-0',
+                 'Both_1 to 4' : 'pop_1-4', 'Both_5-14 years' : 'pop_5-14', 
+                 'Both_15-69 years' : 'pop_15-69', 'Both_70+ years' : 'pop_70-100'}
+
+population = population.rename(columns = pop_new_names)
+
+# Reindex so country is the index
+population = population.set_index(keys = 'country', drop = True)
+
+#Importing the relevant disease burden data
+burden_all = pd.read_csv('GBD_data_wide_2017.csv')
+
+#Importing the relevant coverage data
+coverage = pd.read_excel('C:/Users/laurenct/OneDrive - Wellcome Cloud/Health metrics/Vaccines data/Intervention penetration group placeholder.xlsm', 
+                         sheet_name = 'Penetration assumptions')
+
+coverage.columns = coverage.iloc[10]
+coverage = coverage.iloc[11:, 1:]
+
+cov_new_columns = [column for column in list(coverage) if re.search("cover|^country", column)]
+coverage = coverage[cov_new_columns]
+
+cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
+coverage = coverage.rename(columns = cov_new_names)
 
 # Declaring all the functions used in the script
 def check_run_all(analysis_type, param_user_dict):
@@ -343,8 +389,14 @@ def restructure_to_probabilistic(analysis_type, param_user):
                   for code in id_codes}
     return param_dict
 
+def get_relevant_burden(deterministic_dict, burden_all):
+    
+    
 # Code run sequentially
 
+    
+#Write in a parameter checking function as the first function#~
+    
 # Vary the parameter df depending on whether you are running all the analysis
 # or just a subset
 param_user = check_run_all(analysis_type, param_user_dict)
