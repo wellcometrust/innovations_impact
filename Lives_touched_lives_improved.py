@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.stats import gamma
 from scipy.stats import beta
+from functools import reduce
 import re
 
 # Set working directory and options
@@ -52,7 +53,8 @@ population.insert(loc = 5, column =  'Both_15-69 years',
                   value = (population['Both_15-49 years'] + population['Both_50-69 years']))
 
 # Remove the merged columns 
-pop_new_columns = [column for column in list(population) if not column in ['Both_15-49 years', 'Both_50-69 years']]
+pop_new_columns = [column for column in list(population) 
+                   if not column in ['Both_15-49 years', 'Both_50-69 years']]
 
 population = population[pop_new_columns]
 
@@ -66,23 +68,189 @@ population = population.rename(columns = pop_new_names)
 # Reindex so country is the index
 population = population.set_index(keys = 'country', drop = True)
 
-#Importing the relevant disease burden data
+# Importing the relevant disease burden data
 burden_all = pd.read_csv('GBD_data_wide_2017.csv')
 
-#Importing the relevant coverage data
+# Importing the relevant coverage data
 coverage = pd.read_excel('C:/Users/laurenct/OneDrive - Wellcome Cloud/Health metrics/Vaccines data/Intervention penetration group placeholder.xlsm', 
                          sheet_name = 'Penetration assumptions')
 
 coverage.columns = coverage.iloc[10]
 coverage = coverage.iloc[11:, 1:]
 
-cov_new_columns = [column for column in list(coverage) if re.search("cover|^country", column)]
+cov_new_columns = [column for column in list(coverage) if re.search('cover|^country', column)]
 coverage = coverage[cov_new_columns]
 
 cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
 coverage = coverage.rename(columns = cov_new_names)
 
 # Declaring all the functions used in the script
+def check_analysis_type(analysis_type):
+    """Checks the values in the analysis type dictionary to make sure they are
+       bools or ints as appropriate
+       Inputs:
+           analysis_type: a dict where values are ints or bools depending on
+               what they determine
+    """
+    # take out the values that are supposed to be bools
+    analysis_values = [analysis_type['run_all'], 
+                       analysis_type['run_deterministic'],
+                       analysis_type['run_probabilistic']]
+    # test to see if they are bools
+    for value in analysis_values:
+        if not type(value) is bool:
+            raise ValueError('all of the run_... parameters in analysis type should be booleans')
+    # test to make sure num trials is an int
+    if not type(analysis_type['num_trials']) is int:
+        raise ValueError('the number of trials has to be an integer')
+
+def check_indexes(param_user_all):
+    """Checks to ensure all of the id_codes for each separate analysis are unique
+       inputs:
+           param_user_all - a df of user inputted parameters
+    """
+    indexes = param_user_all.index.tolist()
+    if len(set(indexes)) < len(indexes):
+        raise ValueError('id_codes should be unique, please ensure there are no duplicate id codes in the parameters csv')
+
+def check_columns(param_user_all):
+    """Checks to ensure all of the required column names are contained in the 
+       parameters tab
+    """
+    pass #~once it is clear exactly which columns are needed write this in
+
+def check_iterable_1_not_smaller(iterable_1, iterable_2):
+    """checks two iterables of the same length for whether each element in 1
+       is at least as big as the corresponding element of 2
+       inputs:
+           iterable_1 - an iterable of arbitary length n
+           iterable_2 - an iterable of length n which is ordered to correspond 
+               to iterable_1
+       returns:
+           bool reflecting whether all elements are not smaller
+    """
+    if len(iterable_1) == len(iterable_2):
+        bool_list = map(lambda x,y: x>=y, iterable_1, iterable_2)        
+    else:
+        raise ValueError("the iterables must be the same length")
+    return all(list(bool_list))
+
+def check_upper_lower(param_user_all):
+    """Checks to ensure every value of the upper parameters is at least as great
+       as the mean and the mean is at least as great as the lower
+       inputs:
+           param_user_all - a df of user inputted parameters
+    """
+    column_roots = [re.sub('_mean', '', column)
+                    for column in param_user_all if re.search('mean', column)]
+    column_mapping = [(column+"_upper", column+"_mean", column+"_lower") 
+                       for column in column_roots]
+    for mapping in column_mapping:
+        # check upper >= mean
+        if not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[0]],
+                                            iterable_2 = param_user_all[mapping[1]]):
+            raise ValueError(mapping[1]+' is greater than '+mapping[0])            
+        # check mean >= lower
+        elif not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[1]],
+                                            iterable_2 = param_user_all[mapping[2]]):
+            raise ValueError(mapping[2]+' is greater than '+mapping[1])
+        # upper>=lower by transitivity therefore is valid
+        else:
+            print('Values of '+mapping[0]+', '+mapping[1]+', '+mapping[2]+' are consistent')
+
+def column_checker(column, ther_diag_param, correct_value):
+    """Checks if a column of a df is all one value, raises an error if it's not
+       inputs:
+           column - a string which is the name of a column in ther_diag_param
+           ther_diag_param - a df of parameters that is filtered so it only
+               contains entries on diagnostics and therapeutics
+           correct_value - a number that is the expected column value
+    """
+    if not all(v == correct_value for v in ther_diag_param[column]):
+        raise ValueError('Values in '+column+' should all be '+str(correct_value)+' for diagnostics and therapeutics')
+    
+def check_diag_ther(param_user_all):
+    """Checks diagnostics and therapeutics to ensure they don't have incorrect 
+       values for population and endemicity - as those do not feed into these 
+       analyses
+       inputs:
+           param_user_all - a df of all user inputted parameters
+    """
+    # Filter the df so it is relevant to therapeutics and diagnostics
+    ther_diag_param = param_user_all[param_user_all.intervention_type.isin(['Treatment', 'Diagnostic'])]
+    # Find the parameters that aren't relevant for the analysis and make sure they won't affect results
+    population_columns = [column for column in param_user_all if re.search('population', column)]
+    endem_columns = [column for column in param_user_all if re.search('endem', column)]
+    # Check each column in turn to ensure it is the right value
+    for column in population_columns:
+        # population estimates don't feed in to these analysis so shouldn't be varying probabilistically
+        if re.search("SD", column):                    
+            column_checker(column, ther_diag_param, correct_value = 0)
+        # population estimates don't feed in to these analysis so should be 1 for every 
+        else:
+            column_checker(column, ther_diag_param, correct_value = 1)
+        # endemicity threshold shouldn't be applied here, as countries with low burden
+        # may use it, on their limited number of patients
+    for column in endem_columns:
+        column_checker(column, ther_diag_param, correct_value = 0)
+
+def check_disease_selection(param_user_all, burden_all):
+    """Checks to confirm that all selected diseases are valid
+    """
+    # all diseases in the dataset - GBD+aetiology+malaria breakdown#~ - Empty is 
+    # only other valid option
+    valid_diseases = set(burden_all['cause'].tolist()+['Empty'])
+    # makes a list of all diseases 
+    disease_choices = (param_user_all['disease_1'].tolist()+
+                       param_user_all['disease_2'].tolist()+
+                       param_user_all['disease_3'].tolist())
+    for disease in disease_choices:
+        if not disease in valid_diseases:
+            #~ could write in a fuzzy lookup for potential valid names
+            raise ValueError(disease+' is not a valid disease name, please search XX for valid diseases')
+
+def check_burden(burden_all):
+    """Checks to make sure all the column names in the burden data are consist
+       ent with what are called in the later code
+    """
+    pass #~write this in when analysis is written - see what columns are required
+
+def check_population(population):
+    """Checks to make sure all the column names in the population data are consist
+       ent with what are called in the later code
+    """
+    pass #~write this in when analysis is written - see what columns are required
+
+def check_coverage(coverage):
+    """Checks to make sure all the column names in the coverage data are consist
+       ent with what are called in the later code
+    """
+    pass #~write this in when analysis is written - see what columns are required
+
+def check_inputs(analysis_type, param_user_all, population, coverage, burden_all):
+    """Checks all user inputs using a variety of functions - raises error if 
+       not valid inputs
+       Inputs:
+           analysis_type - #~ 
+           param_user_all - #~ 
+           population - #~
+           coverage - #~
+           burden_all - #~
+    """
+    # make sure user inputted parameters are valid
+    check_analysis_type(analysis_type)
+    check_indexes(param_user_all)
+    check_columns(param_user_all)
+    check_upper_lower(param_user_all)
+    check_diag_ther(param_user_all)
+    check_disease_selection(param_user_all, burden_all)
+    # make sure burden / population / coverage datasets imported have the 
+    # right country names and column names
+    check_burden(burden_all)
+    check_population(population)
+    check_coverage(coverage)
+    
+    
 def check_run_all(analysis_type, param_user_dict):
     """Gets a user input of the right id_code if not running all previous 
        Inputs:
@@ -395,8 +563,8 @@ def get_relevant_burden(deterministic_dict, burden_all):
 # Code run sequentially
 
     
-#Write in a parameter checking function as the first function#~
-    
+#Write in a parameter checking function as the first function
+check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
 # Vary the parameter df depending on whether you are running all the analysis
 # or just a subset
 param_user = check_run_all(analysis_type, param_user_dict)
