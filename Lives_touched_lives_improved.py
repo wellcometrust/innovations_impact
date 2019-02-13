@@ -84,6 +84,7 @@ coverage = coverage[cov_new_columns]
 
 cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
 coverage = coverage.rename(columns = cov_new_names)
+coverage.index = coverage['country']
 
 # Declaring all the functions used in the script
 def check_analysis_type(analysis_type):
@@ -573,12 +574,6 @@ def get_relevant_burden(param_dict, burden_all):
     # Filter based on age
     burden_dict = {k: burden_dict[k][burden_dict[k]['age'] == param_dict[k]['age'][0]]
                    for k in burden_dict.keys()}
-# =============================================================================
-#     # Replicate the df for each trial / scenario
-#     num_trials = len(list(param_dict.values())[0].index)
-#     burden_dict = {k: [burden_dict[k].copy() for i in range(num_trials)] 
-#                    for k in burden_dict.keys()}
-# =============================================================================
     return burden_dict 
 
 def select_columns_burden(burden_df, index):
@@ -689,34 +684,85 @@ def adjust_burden(burden_dict, param_dict):
            each trial key responding to a homogenously proportioned burden df
            with the relevant figure for that project / trial
     """
-    # Create dictionary of lists to filter disease column by
     burden_dict_new = {}
+    # Loop through each of the id_codes 
     for code in param_dict.keys():
+        # For each code find the relevant burden data and parameters 
         burden_scenarios_dict = {}
         burden_df = burden_dict[code].copy()
         param_df = param_dict[code].copy()
+        # For each trial adjust the burden data to make sure it is relevant
+        # for the trial
         for index in param_df.index.tolist():
             burden_df_index = select_columns_burden(burden_df, index)
             burden_df_index = strain_adjust_burden(burden_df_index, param_df, index)
             burden_df_index = aggregate_burden(burden_df_index)
             burden_scenarios_dict[index] = burden_df_index            
+        # Add the new dictionary for the trials to the outer dictionary
         burden_dict_new[code] = burden_scenarios_dict
     return burden_dict_new
 
-# =============================================================================
-#     disease_lists = {k: [param_dict[k]['disease_1'][0],
-#                          param_dict[k]['disease_2'][0],
-#                          param_dict[k]['disease_3'][0]]
-#                      for k in param_dict.keys()}
-#     adjustment = param_dict['1085180001A'].loc['base','disease_1_prop']
-#     burden_dict['1085180001A'][0]['DALYs_Number_lower'] = burden_dict['1085180001A'][0]['DALYs_Number_lower']*adjustment
-#     burden_df = burden_dict['1085180001A'][0].copy()
-# 
-# =============================================================================
+
+#~ merge coverage and population data
+def create_coverage_population_dict(coverage, population, param_dict):
+    cov_pop_dict = {}
+    for code in param_dict.keys():
+        new_coverage = coverage.copy()
+        population = population.copy()   
+        if param_dict[code]['intervention_type'][0] == 'Treatment':
+            new_coverage = new_coverage[['country',
+                                 'therapeutic_coverage', 
+                                 'therapeutic_prob_cover']]
+        elif param_dict[code]['intervention_type'][0] == 'Diagnostic':
+            new_coverage = new_coverage[['country', 
+                                 'diagnostic_coverage', 
+                                 'diagnostic_prob_cover']]
+        elif param_dict[code]['intervention_type'][0] == 'Vaccine':
+            new_coverage = new_coverage[['country', 
+                                 'vaccine_coverage', 
+                                 'vaccine_prob_cover']]
+        else:
+            raise ValueError('The value of intervention_type for '+code+' is not valid')
+        cov_pop_df = pd.concat([new_coverage, population], axis = 1)
+        cov_pop_dict[code] = cov_pop_df
+    return cov_pop_dict
+
+#~ CHECK THIS FUNCTION / WRITE DOCSTRINGS
+def adjust_cov_pop_df(cov_pop_df, index, param_df):
+    new_cov_pop_df = cov_pop_df.copy()
+    # Adjust population columns by the population assumption for this scenario
+    pop_columns = [column for column in list(new_cov_pop_df) if re.search('pop', column)]
+    for column in pop_columns:
+        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'population']
+    # Adjust coverage columns by the coverage assumption for this scenario
+    cov_columns = [column for column in list(new_cov_pop_df) if re.search('prob_cover', column)]
+    for column in cov_columns:
+        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'coverage']
+    #~ Do we need another assumption and adjustment for coverage achieved?
+    #~ This would be where to model herd immunity
+        new_cov_pop_df[column] = np.where(new_cov_pop_df[column] > 0.95, 
+                                          0.95, new_cov_pop_df[column]) 
+    return new_cov_pop_df  
+
+#~ CHECK THIS FUNCTION / WRITE DOCSTRINGS
+def adjust_cov_pop_for_trials(cov_pop_dict, param_dict):
+    new_cov_pop_dict = {}
+    for code in cov_pop_dict.keys():
+        cov_pop_scenarios_dict = {}
+        cov_pop_df = cov_pop_dict[code]
+        param_df = param_dict[code]
+        for index in param_df.index.tolist():
+            new_cov_pop_df = adjust_cov_pop_df(cov_pop_df, index, param_df)
+            cov_pop_scenarios_dict[index] = new_cov_pop_df.copy()
+        new_cov_pop_dict[code] = cov_pop_scenarios_dict    
+    return new_cov_pop_dict
+    
+#~ MERGE COV_POP dfs with burden DFs - may have to set country to index
+
 
 # Code run sequentially
     
-#Write in a parameter checking function as the first function
+# Write in a parameter checking function as the first function
 check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
 
 # Vary the parameter dict depending on whether you are running all the analysis
@@ -734,5 +780,13 @@ param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
 # Get the disease burden for each disease
 burden_dict = get_relevant_burden(param_dict, burden_all)
 
-# Adjust that burden so it has
-burden_dict_test = adjust_burden(burden_dict, param_dict)
+# Adjust burden so it is in a dictionary of relevant burden dfs for each trial
+# respectively
+burden_dict = adjust_burden(burden_dict, param_dict)
+
+# Create the cov_pop_dict based on coverage for that type of intervention an
+# population
+cov_pop_dict = create_coverage_population_dict(coverage, population, param_dict)
+
+# 
+cov_pop_dict_test = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
