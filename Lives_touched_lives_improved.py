@@ -14,12 +14,13 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.stats import gamma
 from scipy.stats import beta
+from scipy.stats import uniform
 from functools import reduce
 import re
 
 # Set working directory and options
 import os
-os.chdir("C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/R/Lives touched lives improved/Data")
+os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/Python/lives_touched_lives_improved/Data')
 
 # Import parameters csv and import datasets
 
@@ -92,15 +93,15 @@ def check_analysis_type(analysis_type):
            analysis_type: a dict where values are ints or bools depending on
                what they determine
     """
-    # take out the values that are supposed to be bools
+    # Take out the values that are supposed to be bools
     analysis_values = [analysis_type['run_all'], 
                        analysis_type['run_deterministic'],
                        analysis_type['run_probabilistic']]
-    # test to see if they are bools
+    # Test to see if they are bools
     for value in analysis_values:
         if not type(value) is bool:
             raise ValueError('all of the run_... parameters in analysis type should be booleans')
-    # test to make sure num trials is an int
+    # Test to make sure num trials is an int
     if not type(analysis_type['num_trials']) is int:
         raise ValueError('the number of trials has to be an integer')
 
@@ -117,7 +118,7 @@ def check_columns(param_user_all):
     """Checks to ensure all of the required column names are contained in the 
        parameters tab
     """
-    pass #~once it is clear exactly which columns are needed write this in
+    pass #~Once it is clear exactly which columns are needed write this in
 
 def check_iterable_1_not_smaller(iterable_1, iterable_2):
     """checks two iterables of the same length for whether each element in 1
@@ -146,15 +147,15 @@ def check_upper_lower(param_user_all):
     column_mapping = [(column+"_upper", column+"_mean", column+"_lower") 
                        for column in column_roots]
     for mapping in column_mapping:
-        # check upper >= mean
+        # Check upper >= mean
         if not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[0]],
                                             iterable_2 = param_user_all[mapping[1]]):
             raise ValueError(mapping[1]+' is greater than '+mapping[0])            
-        # check mean >= lower
+        # Check mean >= lower
         elif not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[1]],
                                             iterable_2 = param_user_all[mapping[2]]):
             raise ValueError(mapping[2]+' is greater than '+mapping[1])
-        # upper>=lower by transitivity therefore is valid
+        # Upper>=lower by transitivity therefore is valid
         else:
             print('Values of '+mapping[0]+', '+mapping[1]+', '+mapping[2]+' are consistent')
 
@@ -180,27 +181,28 @@ def check_diag_ther(param_user_all):
     ther_diag_param = param_user_all[param_user_all.intervention_type.isin(['Treatment', 'Diagnostic'])]
     # Find the parameters that aren't relevant for the analysis and make sure they won't affect results
     population_columns = [column for column in param_user_all if re.search('population', column)]
-    endem_columns = [column for column in param_user_all if re.search('endem', column)]
+    endem_columns = [column for column in param_user_all if re.search('endem.*[d-z]$', column)]
     # Check each column in turn to ensure it is the right value
     for column in population_columns:
-        # population estimates don't feed in to these analysis so shouldn't be varying probabilistically
+        # Population estimates don't feed in to these analysis so shouldn't be 
+        # have a distribution
         if re.search("SD", column):                    
             column_checker(column, ther_diag_param, correct_value = 0)
-        # population estimates don't feed in to these analysis so should be 1 for every 
+        # Population estimates don't feed in to these analysis so should all be 1 
         else:
             column_checker(column, ther_diag_param, correct_value = 1)
-        # endemicity threshold shouldn't be applied here, as countries with low burden
-        # may use it, on their limited number of patients
+        # Endemicity threshold shouldn't be applied here, as countries with 
+        # low burden may use it, on their limited number of patients
     for column in endem_columns:
         column_checker(column, ther_diag_param, correct_value = 0)
 
 def check_disease_selection(param_user_all, burden_all):
     """Checks to confirm that all selected diseases are valid
     """
-    # all diseases in the dataset - GBD+aetiology+malaria breakdown#~ - Empty is 
+    # All diseases in the dataset - GBD+aetiology+malaria breakdown#~ - Empty is 
     # only other valid option
     valid_diseases = set(burden_all['cause'].tolist()+['Empty'])
-    # makes a list of all diseases 
+    # Makes a list of all diseases inputted by the user
     disease_choices = (param_user_all['disease_1'].tolist()+
                        param_user_all['disease_2'].tolist()+
                        param_user_all['disease_3'].tolist())
@@ -237,14 +239,14 @@ def check_inputs(analysis_type, param_user_all, population, coverage, burden_all
            coverage - #~
            burden_all - #~
     """
-    # make sure user inputted parameters are valid
+    # Make sure user inputted parameters are valid
     check_analysis_type(analysis_type)
     check_indexes(param_user_all)
     check_columns(param_user_all)
     check_upper_lower(param_user_all)
     check_diag_ther(param_user_all)
     check_disease_selection(param_user_all, burden_all)
-    # make sure burden / population / coverage datasets imported have the 
+    # Make sure burden / population / coverage datasets imported have the 
     # right country names and column names
     check_burden(burden_all)
     check_population(population)
@@ -369,18 +371,18 @@ def scenario_param(param_user, param_list, id_code):
            param: a series that has been indexed and renamed
     """
     param = param_user[id_code]
-    # series to get the relevant parameters for the scenario
+    # Series to get the relevant parameters for the scenario
     param = param.reindex(param_list)
-    # get the names of those parameters and replace them with standard ones so 
+    # Get the names of those parameters and replace them with standard ones so 
     # all the parameters have standard names (no upper, lower, mean)
     param_indexes = param.index.values.tolist()
     param_indexes_new = [re.sub('_mean|_lower|_upper', '', x) 
                               if re.search('mean|lower|upper', x) else x 
                               for x in param_indexes]
-    # generate mapping of old indexes to new indexes and use that to rename
+    # Generate mapping of old indexes to new indexes and use that to rename
     indexes_dict = lists_to_dict(param_indexes, param_indexes_new)
     param = param.rename(indexes_dict)
-    # return the relevant parameters with standardised names
+    # Return the relevant parameters with standardised names
     return param 
 
 def restructure_to_deterministic(analysis_type, param_user):
@@ -396,13 +398,13 @@ def restructure_to_deterministic(analysis_type, param_user):
                each of the deterministic scenarios
     """
     id_codes = list(param_user.keys())
-    # generate a dictionary of which parameters are relevant for each scenario
+    # Generate a dictionary of which parameters are relevant for each scenario
     scenarios_dict = deterministic_lists(analysis_type, param_user)
-    # create a dictionary where id_codes are the keys, and the values are dfs
+    # Create a dictionary where id_codes are the keys, and the values are dfs
     # of the parameter values for each scenario
     param_dict = {}
     for code in id_codes:
-        # create a list to be filled with series, where each series is a set
+        # Create a list to be filled with series, where each series is a set
         # of parameters for a scenario
         scenario_params = []
         for scenario in scenarios_dict.keys():
@@ -410,7 +412,7 @@ def restructure_to_deterministic(analysis_type, param_user):
             param = scenario_param(param_user, param_list, code)
             param = param.rename(scenario)
             scenario_params.append(param)
-        # concatenate the series and transpose
+        # Concatenate the series and transpose
         param_df = pd.concat(scenario_params, axis = 1, join_axes=[scenario_params[0].index])
         param_df = param_df.transpose()
         # populate the dictionary
@@ -501,35 +503,35 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
         prob_df = prob_df.append(series)
     # Transpose the df
     prob_df = prob_df.T
-    # generate new columns based on probability distributions
+    # Generate new columns based on probability distributions
     for column in new_columns:
         mean = float(param_example[column+'_mean'])
         sd = float(param_example[column+'_SD'])
         if sd == 0:
             data = np.array([mean for i in range(1,num_trials+1)])
-        # use normal for things that vary around 1, inflation factor will need
+        # Use normal for things that vary around 1, inflation factor will need
         # changing probaby #~
         elif column in ['population', 'inflation_factor', 'coverage']:    
             data = norm.rvs(size = num_trials, loc = mean, scale = sd)
-        # use beta distribution for all paramters that are a proportion
+        # Use beta distribution for all paramters that are a proportion
         elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
                         'coverage_prob', 'intervention_cut', 'share', 'efficacy']:
             data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
                             b = beta_moments(mean, sd)['beta'], 
                             size = num_trials)
-        # use gamma for parameters that are non-negative and have a right skew
+        # Use gamma for parameters that are non-negative and have a right skew
         elif column in ['endem_thresh']:
             data = gamma.rvs(a = gamma_moments(mean, sd)['shape'], 
                              scale = gamma_moments(mean, sd)['scale'], 
                              size = num_trials)
-        # if a new parameter has been added will have to add it to one of the lists
+        # If a new parameter has been added will have to add it to one of the lists
         # above or this ValueError will be thrown every time
         else:
             raise ValueError(column, ' is an invalid column name')
-        # turn the relevant new data into a series (which becomes a column)
+        # Turn the relevant new data into a series (which becomes a column)
         new_column = pd.Series(data, index = range(1, num_trials + 1), name = column)
         prob_df = pd.concat([prob_df, new_column.T], axis = 1, sort = False)
-        # drop unnecessary columns
+        # Drop unnecessary columns
         columns_to_drop = [name for name in list(prob_df) if re.search("mean|SD", name)]
         prob_df = prob_df.drop(columns_to_drop, axis =1)
     return prob_df
@@ -557,22 +559,180 @@ def restructure_to_probabilistic(analysis_type, param_user):
                   for code in id_codes}
     return param_dict
 
-def get_relevant_burden(deterministic_dict, burden_all):
-    
-    
-# Code run sequentially
+def get_relevant_burden(param_dict, burden_all):
+    """Return a dict of burden data frames with the relevant conditions isolated
+    """
+    # Create dictionary of lists to filter disease column by
+    disease_lists = {k: [param_dict[k]['disease_1'][0],
+                         param_dict[k]['disease_2'][0],
+                         param_dict[k]['disease_3'][0]]
+                     for k in param_dict.keys()}
+    # Create dictionary of burden dfs
+    burden_dict = {k: burden_all[burden_all['cause'].isin(disease_lists[k])]
+                   for k in disease_lists.keys()}
+    # Filter based on age
+    burden_dict = {k: burden_dict[k][burden_dict[k]['age'] == param_dict[k]['age'][0]]
+                   for k in burden_dict.keys()}
+# =============================================================================
+#     # Replicate the df for each trial / scenario
+#     num_trials = len(list(param_dict.values())[0].index)
+#     burden_dict = {k: [burden_dict[k].copy() for i in range(num_trials)] 
+#                    for k in burden_dict.keys()}
+# =============================================================================
+    return burden_dict 
 
+def select_columns_burden(burden_df, index):
+    """This probabilistically varies columns by GBD ranges for probabilistic 
+       trials it selects the correct deterministic columns for deterministic 
+       trials and subsets and renames the columns.
+       Inputs:
+           burden_df - a df of burden data with upper, lower and mean estimates
+               for at least one burden measure
+           index - a string to indicate which deterministic scenario or which
+               trial it is
+       Returns:
+           a df of burden data with just one column for each measure
+    """
+    new_burden_df = burden_df.copy()
+    # Create column roots e.g. DALY_rate
+    column_roots = [re.sub('_mean', '', column) 
+                    for column in list(new_burden_df) 
+                    if re.search('mean', column)]
+    # Vary relevant column deterministically or probabilistically based on its root
+    for root in column_roots:    
+        try:
+            int(index)
+            #~normal doesn't allow for much higher burden as in conditions like visceral leishmaniasis
+            new_burden_df[root + '_mean'] = norm.rvs(loc = new_burden_df[root + '_mean'],
+                     scale = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/3)
+            new_burden_df[root + '_mean'] = np.where(new_burden_df[root + '_mean'] <0, 
+                                            0, new_burden_df[root + '_mean'])
+        except ValueError:
+            if index == 'burden_lower':
+                new_burden_df[root + '_mean'] = new_burden_df[root + '_lower']
+            elif index == 'burden_upper':
+                new_burden_df[root + '_mean'] = new_burden_df[root + '_upper']
+        
+    # Remove upper and lower columns as the relevant column is now the mean
+    relevant_columns = [column for column in list(new_burden_df) if not re.search('upper|lower', column)]
+    new_burden_df = new_burden_df[relevant_columns]
+    # Create new column name mapping
+    new_column_names_dict = {column: re.sub('_mean', '', column) for column in relevant_columns}  
+    # Rename columns
+    new_burden_df = new_burden_df.rename(columns = new_column_names_dict)
+    return new_burden_df
+    
+def strain_adjust_burden(burden_df, param_df, index):
+    """Adjusts a data frame of disease burden downwards in case not all of the
+       patients would benefit from the interventions (due to sub disease strains
+       or other factors)
+       Inputs:
+           burden_df - a df with columns of disease burden where the names of 
+               all of those columns contain a _ because they are 'measure_metric', 
+               there is also a cause column
+           param_dict - a df of parameters with columns for 3 diseases in the form
+               disease_[1-3] and with corresponding strain proportions for each of
+               those diseases in the form disease_[1-3]_prop
+           index - a string to indicate which deterministic scenario or which
+               trial it is
+       Returns:
+           a burden df that has been adjusted for those substrains     
+    """
+    # Copy the burden_df to avoid side effects
+    new_burden_df = burden_df.copy()
+    # Create a list of burden columns because they are the form 'measure_metric'
+    column_list = [column for column in list(new_burden_df) if re.search('_', column)]
+    # Create a mapping of the disease and proportion
+    disease_dict = {k: k+"_prop" for k in ['disease_1', 'disease_2', 'disease_3']}
+    # Adjust the df for the substrain prop for each disease
+    for column in column_list:
+        for disease in disease_dict.keys():
+            new_burden_df[column] = np.where(new_burden_df['cause'] == param_df.loc[index, disease], 
+                                         new_burden_df[column]*param_df.loc[index, disease_dict[disease]], 
+                                         new_burden_df[column])
+    return new_burden_df
+
+def aggregate_burden(burden_df):
+    """Sums the burden from various conditions targetted by the intervention
+       Inputs:
+           burden_df - a df with columns for country, age, cause and disease
+               burden
+       Returns:
+           a df where the cause is now renamed to be a list of causes and the
+           burden from original causes is now aggregated
+    """
+    # Create a copy of burden_df to avoid side effects
+    new_burden_df = burden_df.copy()    
+    # Create list then string of causes
+    causes = set(new_burden_df['cause'])
+    new_cause_name = ', '.join(causes)
+    # Aggregate by age and couttry
+    new_burden_df= new_burden_df.groupby(['country', 'age']).sum()
+    # Turn the indexes back into columns in a df
+    index_list = new_burden_df.index.tolist()
+    summed_df = pd.DataFrame(index_list, columns = ['country', 'age'], index = index_list)
+    # Add the new cause name to the df
+    summed_df['cause'] = new_cause_name
+    # Merge the burden with the country, age group, and cause columns
+    summed_df = pd.concat([summed_df, new_burden_df], axis = 1)
+    return summed_df
+    
+def adjust_burden(burden_dict, param_dict):
+    """Adjusts the burden numbers down for substrains
+       Inputs:
+           burden_dict - a dict - keys are id_codes for the projects
+               values are dataframes of all relevant burden for those projects
+           param_dict - a dict - keys are id_codes for the projects and values 
+               are dfs of parameters for the different scenarios and trials
+       Returns:
+           a dictionary keys are the id_codes for projects, values are dicts
+           each trial key responding to a homogenously proportioned burden df
+           with the relevant figure for that project / trial
+    """
+    # Create dictionary of lists to filter disease column by
+    burden_dict_new = {}
+    for code in param_dict.keys():
+        burden_scenarios_dict = {}
+        burden_df = burden_dict[code].copy()
+        param_df = param_dict[code].copy()
+        for index in param_df.index.tolist():
+            burden_df_index = select_columns_burden(burden_df, index)
+            burden_df_index = strain_adjust_burden(burden_df_index, param_df, index)
+            burden_df_index = aggregate_burden(burden_df_index)
+            burden_scenarios_dict[index] = burden_df_index            
+        burden_dict_new[code] = burden_scenarios_dict
+    return burden_dict_new
+
+# =============================================================================
+#     disease_lists = {k: [param_dict[k]['disease_1'][0],
+#                          param_dict[k]['disease_2'][0],
+#                          param_dict[k]['disease_3'][0]]
+#                      for k in param_dict.keys()}
+#     adjustment = param_dict['1085180001A'].loc['base','disease_1_prop']
+#     burden_dict['1085180001A'][0]['DALYs_Number_lower'] = burden_dict['1085180001A'][0]['DALYs_Number_lower']*adjustment
+#     burden_df = burden_dict['1085180001A'][0].copy()
+# 
+# =============================================================================
+
+# Code run sequentially
     
 #Write in a parameter checking function as the first function
 check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
-# Vary the parameter df depending on whether you are running all the analysis
+
+# Vary the parameter dict depending on whether you are running all the analysis
 # or just a subset
 param_user = check_run_all(analysis_type, param_user_dict)
 
 # Create different versions of the parameters ready for sensitivity analyses
 deterministic_dict = restructure_to_deterministic(analysis_type, param_user)
-
-# Create different versions of the parameters ready for sensitivity analyses
 probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
 
+# Combine into one dict
+param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
+              for k in deterministic_dict.keys()}
 
+# Get the disease burden for each disease
+burden_dict = get_relevant_burden(param_dict, burden_all)
+
+# Adjust that burden so it has
+burden_dict_test = adjust_burden(burden_dict, param_dict)
