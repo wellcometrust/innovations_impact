@@ -72,6 +72,8 @@ population = population.set_index(keys = 'country', drop = True)
 # Importing the relevant disease burden data
 burden_all = pd.read_csv('GBD_data_wide_2017.csv')
 
+burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
+
 # Importing the relevant coverage data
 coverage = pd.read_excel('C:/Users/laurenct/OneDrive - Wellcome Cloud/Health metrics/Vaccines data/Intervention penetration group placeholder.xlsm', 
                          sheet_name = 'Penetration assumptions')
@@ -670,6 +672,8 @@ def aggregate_burden(burden_df):
     summed_df['cause'] = new_cause_name
     # Merge the burden with the country, age group, and cause columns
     summed_df = pd.concat([summed_df, new_burden_df], axis = 1)
+    # Reindex so the country is the only index
+    summed_df.index = [i[0] for i in summed_df.index.tolist()]
     return summed_df
     
 def adjust_burden(burden_dict, param_dict):
@@ -702,33 +706,63 @@ def adjust_burden(burden_dict, param_dict):
         burden_dict_new[code] = burden_scenarios_dict
     return burden_dict_new
 
-
-#~ merge coverage and population data
 def create_coverage_population_dict(coverage, population, param_dict):
+    """Creates a dictionary where keys are id_codes and values are dfs
+       of relevant coverage / population data for the intervention
+       Inputs:
+           coverage - a df of coverage data containing the columns 'country' and
+               coverage and prob_cover columns for each modality
+           population - a df if population data with the columns 'country' and 
+               population columns
+           param_dict - a df with the column 'intervention_type'
+       Returns:
+           dict where keys are id_codes and values are dfs of relevant coverage 
+               / population data for the intervention        
+    """
     cov_pop_dict = {}
+    # Loop through the id_codes to be keys in the dictionary
     for code in param_dict.keys():
         new_coverage = coverage.copy()
         population = population.copy()   
+        # Select therapeutic coverage columns if it is a treatment (therapeutic)
         if param_dict[code]['intervention_type'][0] == 'Treatment':
             new_coverage = new_coverage[['country',
                                  'therapeutic_coverage', 
                                  'therapeutic_prob_cover']]
+        # Select diagnostics coverage columns if it is a diagnostic
         elif param_dict[code]['intervention_type'][0] == 'Diagnostic':
             new_coverage = new_coverage[['country', 
                                  'diagnostic_coverage', 
                                  'diagnostic_prob_cover']]
+        # Select vaccine coverage columns if it is a vaccine
         elif param_dict[code]['intervention_type'][0] == 'Vaccine':
             new_coverage = new_coverage[['country', 
                                  'vaccine_coverage', 
                                  'vaccine_prob_cover']]
         else:
             raise ValueError('The value of intervention_type for '+code+' is not valid')
+        # Create new column names and rename
+        new_column_names = {column: re.sub('vaccine_|diagnostic_|therapeutic_', '', column) 
+                            for column in list(new_coverage)}
+        new_coverage = new_coverage.rename(columns = new_column_names)
+        # Merge the coverage and population data
         cov_pop_df = pd.concat([new_coverage, population], axis = 1)
         cov_pop_dict[code] = cov_pop_df
     return cov_pop_dict
 
-#~ CHECK THIS FUNCTION / WRITE DOCSTRINGS
+#~ CHECK THIS FUNCTION
 def adjust_cov_pop_df(cov_pop_df, index, param_df):
+    """Adjust the coverage and proportion based on the parameters for each scenario
+       Inputs:
+           cov_pop_df - a df with population columns and coverage columns in the
+               form prob_cover
+           index - a string to indicate which deterministic scenario or which
+               trial it is
+           param_df - a df with parameters for each of the scenarios must contain
+               columns: 'coverage' and 'population'
+       Returns:
+           a df with the population and coverage columns adjusted
+    """
     new_cov_pop_df = cov_pop_df.copy()
     # Adjust population columns by the population assumption for this scenario
     pop_columns = [column for column in list(new_cov_pop_df) if re.search('pop', column)]
@@ -744,21 +778,199 @@ def adjust_cov_pop_df(cov_pop_df, index, param_df):
                                           0.95, new_cov_pop_df[column]) 
     return new_cov_pop_df  
 
-#~ CHECK THIS FUNCTION / WRITE DOCSTRINGS
+#~ CHECK THIS FUNCTION
 def adjust_cov_pop_for_trials(cov_pop_dict, param_dict):
+    """Adjusts the cov_pop_dict so its values are now a dictionary of scenario
+       and dfs to use in each of those scenarios
+       Inputs:
+           cov_pop_dict - a dictionary where the keys are id_codes and the 
+               values are dfs of coverage and population data
+           param_dict - a dictionary where the keys are id_codes and the values
+               are dfs of paramters for each of hte scenarios
+       Returns:
+           a dict where the keys are id_codes and the values are dicts of where
+           keys are scenarios and values are dfs of appropriate coverage / population
+           data
+    """
     new_cov_pop_dict = {}
+    # Loop through the dictionary by keys
     for code in cov_pop_dict.keys():
+        # Set up the dict and dfs
         cov_pop_scenarios_dict = {}
         cov_pop_df = cov_pop_dict[code]
         param_df = param_dict[code]
+        # Loop through each of the scenarios 
         for index in param_df.index.tolist():
+            # Adjust the cov_pop_df based on the scenario parameters
             new_cov_pop_df = adjust_cov_pop_df(cov_pop_df, index, param_df)
             cov_pop_scenarios_dict[index] = new_cov_pop_df.copy()
         new_cov_pop_dict[code] = cov_pop_scenarios_dict    
     return new_cov_pop_dict
     
-#~ MERGE COV_POP dfs with burden DFs - may have to set country to index
+#~ CHECK THIS FUNCTION
+def merge_cov_pop_and_burden(burden_dict, cov_pop_dict):
+    """Merges the dataframes within a nested dictionary structure
+       
+       Inputs:
+           burden_dict - keys - id_code, values are dictionary of scenarios
+               and burden data dfs
+           cov_pop_dict - keys - id_code, values are dictionary of scenarios
+               and coverage and population data dfs
+           (both sets of keys, and indexes of the dfs have to be equivalent)
+       Returns:
+           a merged data_dict of dictionaries
+    """
+    data_dict = {}
+    for code in burden_dict.keys():
+        scenario_dict = {}
+        scenario_dict_burden = burden_dict[code]
+        scenario_dict_cov_pop = cov_pop_dict[code]
+        for scen in scenario_dict_burden.keys():
+             # Merge population and burden data
+             merged_df = pd.concat([scenario_dict_burden[scen],
+                                            scenario_dict_cov_pop[scen]],
+                                            axis = 1)
+             # Deduplicate columns from the df
+             merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()]
+             scenario_dict[scen] = merged_df
+        data_dict[code] = scenario_dict
+    return data_dict
 
+def create_target_population(cov_pop_burden_df, param_df, index):
+    """Adds a new column to cov_pop_burden_df which is the target population
+       Inputs:
+           cov_pop_burden_df - a df which must contain 'incidence_number' and 
+               'pop_0-0' columns
+           param_df - a df of parameters which must contain the column 'intervention_type'
+               where all of the values are 'Treatment', 'Diagnostic' or 'Vaccine'
+           index - a string that is one of the indexes of param_df
+       Returns:
+           a cov_pop_burden_df with target_pop column added
+    """
+    # Select incidence as the target population if it is a therapeutic or diagnostic
+    if param_df.loc[index, 'intervention_type'] == 'Treatment':
+        cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
+    elif param_df.loc[index, 'intervention_type'] == 'Diagnostic':
+        cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
+    # Select population column if it is a vaccine 
+    #~ This assumes it is an infant vaccination
+    elif param_df.loc[index, 'intervention_type'] == 'Vaccine':
+        cov_pop_burden_df['target_pop'] = cov_pop_burden_df['pop_0-0']
+    else:
+        raise ValueError('The value of intervention_type for is not valid')
+    return cov_pop_burden_df
+    
+def apply_endemicity_threshold(cov_pop_burden_df, param_df, index):
+    """Reduces coverage rates in df if burden is below the threshold
+       Inputs:
+           cov_pop_burden_df - a df with the column 'coverage'
+           param_df - a df of parameters, must contain the columns coverage_below_threshold,
+               endem_thresh and endem_thresh_metric
+           index - a string that is one of the indexes of param_df
+       Returns:
+           a df with coverage reduced in geographies with burden below the threshold
+    """
+    # Defines which burden column is relevant for the endemicity threshold
+    endem_thresh_column = param_df.loc[index, 'endem_thresh_metric']+'_rate'
+    # Defines the threshold and coverage below the threshold
+    endem_thresh = param_df.loc[index, 'endem_thresh']
+    coverage_below_threshold = param_df.loc[index, 'coverage_below_threshold']
+    # Applies the endemicity threshold
+    cov_pop_burden_df['coverage'] = np.where(cov_pop_burden_df[endem_thresh_column] < endem_thresh,
+                     coverage_below_threshold,
+                     cov_pop_burden_df['coverage'])
+    return cov_pop_burden_df
+
+def apply_diagnostic_inflation(cov_pop_burden_df, param_df, index):
+    """Inflates the target_pop in df 
+       Inputs:
+           cov_pop_burden_df - a df with the column 'target_pop'
+           param_df - a df of parameters, must contain the columns 'inflation_factor'
+           index - a string that is one of the indexes of param_df
+       Returns:
+           a df with inflated target_pop column
+    """
+    cov_pop_burden_df['target_pop'] = cov_pop_burden_df['target_pop']*param_df.loc[index, 'inflation_factor']
+    return cov_pop_burden_df
+
+def apply_intervention_cut(cov_pop_burden_df, param_df, index):
+    """Reduces prob_cover by the intervention_cut
+       Inputs:
+           cov_pop_burden_df - a df with the column 'prob_cover'
+           param_df - a df of parameters, must contain the columns 'intervention_cut'
+           index - a string that is one of the indexes of param_df
+       Returns:
+           a df with inflated target_pop column
+    """
+    cov_pop_burden_df['prob_cover'] = cov_pop_burden_df['prob_cover']*param_df.loc[index, 'intervention_cut']
+    return cov_pop_burden_df
+
+def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
+    """Applies several adjustments to the dfs that are the values of the nested
+       dict cov_pop_burden_dicts
+       Inputs:
+           cov_pop_burden_dict - a nested dict where keys are id_codes and then
+               scenarios and the values are dfs 
+           param_dict - a dict where the keys are id_codes and the values are dfs
+               with a row of parameters for each of the scenarios
+       Returns:
+           a nested dict of updated dfs
+    """
+    for code in param_dict.keys():
+        param_df = param_dict[code]
+        for index in param_df.index.tolist():
+            cov_pop_burden_df = cov_pop_burden_dict[code][index].copy()
+            cov_pop_burden_df = create_target_population(cov_pop_burden_df, param_df, index)
+            if param_df.loc[index, 'intervention_type'] == 'Diagnostic':
+                cov_pop_burden_df = apply_diagnostic_inflation(cov_pop_burden_df, param_df, index)
+            elif param_df.loc[index, 'intervention_type'] == 'Vaccine':
+                cov_pop_burden_df = apply_endemicity_threshold(cov_pop_burden_df, param_df, index)
+            cov_pop_burden_df = apply_intervention_cut(cov_pop_burden_df, param_df, index)
+            cov_pop_burden_dict[code][index] = cov_pop_burden_df
+    return cov_pop_burden_dict
+    
+def calculate_lives_touched(cov_pop_burden_df):
+    """Creates a column for lives touched by multiplying relevant columns
+       Inputs:
+           cov_pop_burden_df - a df that must contain columns 'target_pop', 
+               'coverage' and 'prob_cover'
+       Returns:
+           a df with a lives_touched column
+    """
+    cov_pop_burden_df['lives_touched'] = (cov_pop_burden_df['target_pop']*
+                                          cov_pop_burden_df['coverage']*
+                                          cov_pop_burden_df['prob_cover'])
+    return cov_pop_burden_df
+
+def update_lives_touched(cov_pop_burden_dict, param_dict):
+    """Updates lives_touched figures for each of the scenarios in the param_dfs
+       Inputs:
+           cov_pop_burden_dict - a nested dict where keys are id_codes and then
+               scenarios and the values are dfs
+           param_dict - a dict where the keys are id_codes and the values are dfs
+               with a row of parameters for each of the scenarios
+       Returns:
+           param_dict with updated lives_touched figures for each of the rows
+               of the dfs (the values of the dict)
+    """
+    for code in param_dict.keys():
+        param_df = param_dict[code]
+        for index in param_df.index.tolist():
+            #~haven't extracted the estimated lives_touched in the cov_pop_burden_dict, is it necessary?
+            cov_pop_burden_df = cov_pop_burden_dict[code][index].copy()
+            cov_pop_burden_df = calculate_lives_touched(cov_pop_burden_df)
+            lives_touched = cov_pop_burden_df['lives_touched'].sum()
+            param_df.loc[index, 'lives_touched'] = lives_touched
+        param_dict[code] = param_df 
+    return param_dict
+        
+def adjust_for_efficacy():
+    """
+    """
+    pass
+
+#~ Write in graphing
+#~ Write in exporting charts and data
 
 # Code run sequentially
     
@@ -777,6 +989,8 @@ probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
 param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
               for k in deterministic_dict.keys()}
 
+#~ SHOULD PROBABLY ADD IN A FUNCTION HERE TO CLEAR OUT THE VALUES OF LTLI TO AVOID POTENTIAL CONFUSION
+
 # Get the disease burden for each disease
 burden_dict = get_relevant_burden(param_dict, burden_all)
 
@@ -788,5 +1002,18 @@ burden_dict = adjust_burden(burden_dict, param_dict)
 # population
 cov_pop_dict = create_coverage_population_dict(coverage, population, param_dict)
 
-# 
-cov_pop_dict_test = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
+# Adjust cov_pop_dict so the values are now dicts where the keys are scenarios
+# and the values are dfs customised to the scenarios
+cov_pop_dict = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
+
+# Merge the burden and coverage / population dfs
+cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, cov_pop_dict)
+
+# Adjust the dfs in cov_pop_burden_dict for intervention factors such as the 
+# endemicity threshold, diagnostic inflation and intervention cut
+cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param_dict)
+
+# Calculate lives_touched and input them to 
+param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
+
+#~NEED TO FIND THE COVERAGE DATA nan I SAW?????
