@@ -963,11 +963,86 @@ def update_lives_touched(cov_pop_burden_dict, param_dict):
             param_df.loc[index, 'lives_touched'] = lives_touched
         param_dict[code] = param_df 
     return param_dict
-        
-def adjust_for_efficacy():
+    
+   
+def calculate_lives_improved(param_df):
+    """Create a new column for lives improved in a df
+       Inputs:
+           param_df - a df of parameters must contain columns: 'lives_touched' and 'efficacy'
+       Returns:
+           a df with a lives_improved column added
     """
+    param_df['lives_improved'] = (param_df['lives_touched']*param_df['efficacy'])
+    return param_df
+
+def update_lives_improved(param_dict):
+    """Update dfs in param_dict with lives improved columns
+       Inputs:
+           param_dict - a dict where keys are id_codes and the values are 
+               dfs of parameters
+       Returns:
+           a dict of dfs with a lives improved column added for each of them
     """
-    pass
+    param_dict = {k: calculate_lives_improved(v) for k, v in param_dict.items()}
+    return param_dict
+
+def isolate_deterministic_rows(param_df):
+    """Filter dfs by whether the index is text (signifying a deterministic scenario)
+       Inputs:
+           param_df - a df of paramters where the indexes are strings for 
+               deterministic scenarios and numbers for probabilistic trials
+       Returns:
+           a filtered df where all the data is for deterministic scenarios
+    """
+    param_determ_df = param_df.loc[param_df.index.str.contains('[a-z]', na=False)].copy()
+    return param_determ_df
+
+def isolate_probabilistic_rows(param_df, analysis_type):
+    """Filter dfs by whether the index is a number in the range 1:num_trials
+       (signifying a probabilistic trial)
+       Inputs:
+           param_df - a df of paramters where the indexes are strings for 
+               deterministic scenarios and numbers for probabilistic trials
+       Returns:
+           a filtered df where all the data is for probabilistic trials      
+    """
+    num_trials = analysis_type['num_trials']
+    param_prob_df = param_df.loc[param_df.index.isin(range(1,num_trials+1))].copy()
+    return param_prob_df
+
+def separate_param_dict(param_dict):
+    """Creates a dictionary of two dictionaries, one for deterministic scenarios
+       and another for probabilistic trials
+       Inputs:
+           param_dict - a dict where keys are id_codes and values are dfs
+       Returns:
+           a dict of two dicts 
+    """
+    deterministic_dict = {k: isolate_deterministic_rows(v) for k, v in param_dict.items()}
+    probabilistic_dict = {k: isolate_probabilistic_rows(v) for k, v in param_dict.items()}
+    return {'det': deterministic_dict, 'prob': probabilistic_dict}
+
+def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all):
+    """Puts the new values for lives_touched and lives_improved (including the
+       95% confidence interval upper and lower bounds)
+       Inputs:
+           deterministic_dict - a dictionary where keys are id_codes and values
+               are dfs where one of the indexes is 'base' and columns are 
+               'lives_touched' and 'lives_improved'
+           probabilistic_dict - a dictionary where keys are id_codes and values
+               are dfs where columns are 'lives_touched' and 'lives_improved'
+           param_user_all - a df where indexes are id_codes 
+    """
+    for code in param_user_all.index:
+        determ_df = deterministic_dict[code]
+        prob_df = probabilistic_dict[code]
+        param_user_all.loc[code, 'lives_touched'] = determ_df.loc['base', 'lives_touched']
+        param_user_all.loc[code, 'lives_improved'] = determ_df.loc['base', 'lives_improved']
+        param_user_all.loc[code, 'lives_touched_025'] = prob_df['lives_touched'].quantile(0.025)
+        param_user_all.loc[code, 'lives_touched_975'] = prob_df['lives_touched'].quantile(0.975)
+        param_user_all.loc[code, 'lives_improved_025'] = prob_df['lives_improved'].quantile(0.025)
+        param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
+    return param_user_all        
 
 #~ Write in graphing
 #~ Write in exporting charts and data
@@ -1015,5 +1090,15 @@ cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param
 
 # Calculate lives_touched and input them to 
 param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
+
+param_dict = update_lives_improved(param_dict)
+
+# Separate param dict into seperate dicts for further analyis
+param_dict_separated = separate_param_dict(param_dict)
+deterministic_dict = param_dict_separated['det']
+probabilistic_dict = param_dict_separated['prob']
+
+# Update param_user_all ready for export
+param_user_all = update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all)
 
 #~NEED TO FIND THE COVERAGE DATA nan I SAW?????
