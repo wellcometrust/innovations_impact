@@ -14,13 +14,14 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.stats import gamma
 from scipy.stats import beta
-from scipy.stats import uniform
-from functools import reduce
 import re
+import datetime
 
 # Set working directory and options
 import os
-os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/Python/lives_touched_lives_improved/Data')
+os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data')
+directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+
 
 # Import parameters csv and import datasets
 
@@ -32,8 +33,8 @@ analysis_type = {'run_all' : True,
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
-param_user_all = pd.read_csv("LTLI_parameters_python.csv")
-param_user_all = param_user_all.set_index("id_code")
+param_user_all = pd.read_csv('LTLI_parameters_python.csv')
+param_user_all = param_user_all.set_index('id_code')
 param_user_dict = {code : param_user_all.loc[code] 
                    for code in param_user_all.index.tolist()}
 
@@ -110,7 +111,7 @@ def check_analysis_type(analysis_type):
 
 def check_indexes(param_user_all):
     """Checks to ensure all of the id_codes for each separate analysis are unique
-       inputs:
+       Inputs:
            param_user_all - a df of user inputted parameters
     """
     indexes = param_user_all.index.tolist()
@@ -120,17 +121,47 @@ def check_indexes(param_user_all):
 def check_columns(param_user_all):
     """Checks to ensure all of the required column names are contained in the 
        parameters tab
+       Inputs:
+           param_user_all - a df of user inputted parameters
+
     """
-    pass #~Once it is clear exactly which columns are needed write this in
+    necessary_columns = ['id_name', 'intervention_type', 'disease_1', 'disease_2', 
+                         'disease_3', 'age', 'id_code', 'population_upper', 
+                         'population_mean', 'population_lower', 'population_SD', 
+                         'disease_1_prop_mean', 'disease_1_prop_lower', 
+                         'disease_1_prop_upper', 'disease_1_prop_SD', 
+                         'disease_2_prop_mean', 'disease_2_prop_lower', 
+                         'disease_2_prop_upper', 'disease_2_prop_SD', 
+                         'disease_3_prop_mean', 'disease_3_prop_lower', 
+                         'disease_3_prop_upper', 'disease_3_prop_SD', 
+                         'endem_thresh_mean', 'endem_thresh_lower', 
+                         'endem_thresh_upper', 'endem_thresh_SD', 
+                         'endem_thresh_metric', 'inflation_factor_upper', 
+                         'inflation_factor_mean', 'inflation_factor_lower', 
+                         'inflation_factor_SD', 'intervention_cut_upper', 
+                         'intervention_cut_mean', 'intervention_cut_lower', 
+                         'intervention_cut_SD', 'coverage_prob_upper', 
+                         'coverage_prob_mean', 'coverage_prob_lower', 
+                         'coverage_prob_SD', 'coverage_upper', 'coverage_mean', 
+                         'coverage_lower', 'coverage_SD', 'coverage_below_threshold', 
+                         'share_upper', 'share_mean', 'share_lower', 'share_SD', 
+                         'efficacy_upper', 'efficacy_mean', 'efficacy_lower', 
+                         'efficacy_SD', 'lives_touched', 'lives_touched_975', 
+                         'lives_touched_025', 'lives_improved', 'lives_improved_975', 
+                         'lives_improved_025', 'exception_count', 'exception_comment']
+    necessary_columns_present = [column in list(param_user_all) 
+                                for column in necessary_columns]
+    if not all(necessary_columns_present):
+        raise ValueError('Parameter inputs are missing columns, see check_columns function for expected list')
 
 def check_iterable_1_not_smaller(iterable_1, iterable_2):
-    """checks two iterables of the same length for whether each element in 1
+    """Checks two iterables of the same length for whether each element in 1
        is at least as big as the corresponding element of 2
-       inputs:
+       Inputs:
            iterable_1 - an iterable of arbitary length n
            iterable_2 - an iterable of length n which is ordered to correspond 
                to iterable_1
-       returns:
+       Returns:
            bool reflecting whether all elements are not smaller
     """
     if len(iterable_1) == len(iterable_2):
@@ -177,7 +208,7 @@ def check_diag_ther(param_user_all):
     """Checks diagnostics and therapeutics to ensure they don't have incorrect 
        values for population and endemicity - as those do not feed into these 
        analyses
-       inputs:
+       Inputs:
            param_user_all - a df of all user inputted parameters
     """
     # Filter the df so it is relevant to therapeutics and diagnostics
@@ -201,6 +232,10 @@ def check_diag_ther(param_user_all):
 
 def check_disease_selection(param_user_all, burden_all):
     """Checks to confirm that all selected diseases are valid
+       Inputs:
+           param_user_all - a df of inputted parameters must contain disease_1
+               disease_2, and disease_3 columns
+           burden_all - a df of burden data, disease column must be called cause
     """
     # All diseases in the dataset - GBD+aetiology+malaria breakdown#~ - Empty is 
     # only other valid option
@@ -217,30 +252,63 @@ def check_disease_selection(param_user_all, burden_all):
 def check_burden(burden_all):
     """Checks to make sure all the column names in the burden data are consist
        ent with what are called in the later code
+       Inputs:
+           burden_all - names of disease burden columns contain a _ because 
+               they are 'measure_metric', there are columns for 'country', 
+               'age', 'cause'
     """
+    expected_columns = ['age', 'country', 'cause']
+    column_name_check = [column in list(burden_all) for column in expected_columns]
+    if not all(column_name_check):
+        raise ValueError('check that age, country and cause are in burden all')
     pass #~write this in when analysis is written - see what columns are required
 
 def check_population(population):
-    """Checks to make sure all the column names in the population data are consist
-       ent with what are called in the later code
+    """Checks to make sure all the column names and indexes in the population 
+       data are consistent with what are called in the later code
+       Inputs:
+           population - a df of population data
     """
-    pass #~write this in when analysis is written - see what columns are required
+    # Check the column names are there
+    expected_names = ['pop_0-0', 'pop_1-4', 'pop_5-14', 'pop_15-69','pop_70-100']
+    expected_names_present = [name in list(population) for name in expected_names]
+    if not all(expected_names_present):
+        raise ValueError('The population df does not have the expected columns')
+    # Check the index for country names
+    elif 'France' not in population.index:
+        raise ValueError('The population df does not have countries as indexes')
+    else:
+        # do nothing because not problems
+        pass 
 
 def check_coverage(coverage):
-    """Checks to make sure all the column names in the coverage data are consist
-       ent with what are called in the later code
+    """Checks to make sure all the column names and indexes in the coverage data 
+       are consistent with what are called in the later code
+       Inputs:
+           population - a df of coverage data
     """
-    pass #~write this in when analysis is written - see what columns are required
+    expected_names = ['vaccine_coverage',  'vaccine_prob_cover',
+                     'diagnostic_coverage', 'diagnostic_prob_cover',
+                     'therapeutic_coverage', 'therapeutic_prob_cover']
+    expected_names_present = [name in list(coverage) for name in expected_names]
+    if not all(expected_names_present):
+        raise ValueError('The population df does not have the expected columns')
+    # Check the index for country names
+    elif 'France' not in coverage.index:
+        raise ValueError('The population df does not have countries as indexes')
+    else:
+        # do nothing because not problems
+        pass 
 
 def check_inputs(analysis_type, param_user_all, population, coverage, burden_all):
     """Checks all user inputs using a variety of functions - raises error if 
        not valid inputs
        Inputs:
-           analysis_type - #~ 
-           param_user_all - #~ 
-           population - #~
-           coverage - #~
-           burden_all - #~
+           analysis_type - a dict 
+           param_user_all - a df of input parameters
+           population - a df of population data
+           coverage - a df of coverage data
+           burden_all - a df of burden data
     """
     # Make sure user inputted parameters are valid
     check_analysis_type(analysis_type)
@@ -254,7 +322,6 @@ def check_inputs(analysis_type, param_user_all, population, coverage, burden_all
     check_burden(burden_all)
     check_population(population)
     check_coverage(coverage)
-    
     
 def check_run_all(analysis_type, param_user_dict):
     """Gets a user input of the right id_code if not running all previous 
@@ -298,17 +365,14 @@ def lists_to_dict(list_keys, list_values):
            list_keys - a list of n unique elements, where  n = 0, 1 or many
            list_values - a list of n elements
        Returns:
-           dict_name - a dict of length n
+           a dict of length n
     """
-    dict_name = {}
     if len(list_keys) > len(set(list_keys)):
         raise ValueError('The list of keys is not unique')
     elif len(list_keys) != len(list_values):
         raise ValueError('The lists are not the same length')
     else:
-        for i in range(len(list_keys)):
-            dict_name[list_keys[i]] = list_values[i]
-        return dict_name
+        return {k:v for k,v in zip(list_keys, list_values)}
 
 def deterministic_lists(analysis_type, param_user):
     """Defines the different LTLI scenarios and which sets of parameters should
@@ -558,12 +622,18 @@ def restructure_to_probabilistic(analysis_type, param_user):
     param_prob = {k:v[column_names] for k, v in param_user.items()}
     # Generate the relevant id_codes
     id_codes = list(param_user.keys())
-    param_dict = {code : create_prob_df(param_prob, code, new_columns, num_trials) 
+    param_dict = {code: create_prob_df(param_prob, code, new_columns, num_trials) 
                   for code in id_codes}
     return param_dict
 
 def get_relevant_burden(param_dict, burden_all):
     """Return a dict of burden data frames with the relevant conditions isolated
+       Inputs:
+           param_dict - keys: id_codes, values dfs of parameters for 
+               each of the trials / scenarios
+           burden_all - a df of burden data, must have the columns cause and age
+       Returns:
+           a dict - keys: id_codes, values dfs of burden data
     """
     # Create dictionary of lists to filter disease column by
     disease_lists = {k: [param_dict[k]['disease_1'][0],
@@ -576,7 +646,7 @@ def get_relevant_burden(param_dict, burden_all):
     # Filter based on age
     burden_dict = {k: burden_dict[k][burden_dict[k]['age'] == param_dict[k]['age'][0]]
                    for k in burden_dict.keys()}
-    return burden_dict 
+    return burden_dict
 
 def select_columns_burden(burden_df, index):
     """This probabilistically varies columns by GBD ranges for probabilistic 
@@ -626,7 +696,7 @@ def strain_adjust_burden(burden_df, param_df, index):
        Inputs:
            burden_df - a df with columns of disease burden where the names of 
                all of those columns contain a _ because they are 'measure_metric', 
-               there is also a cause column
+               there is also a cause column 
            param_dict - a df of parameters with columns for 3 diseases in the form
                disease_[1-3] and with corresponding strain proportions for each of
                those diseases in the form disease_[1-3]_prop
@@ -750,7 +820,6 @@ def create_coverage_population_dict(coverage, population, param_dict):
         cov_pop_dict[code] = cov_pop_df
     return cov_pop_dict
 
-#~ CHECK THIS FUNCTION
 def adjust_cov_pop_df(cov_pop_df, index, param_df):
     """Adjust the coverage and proportion based on the parameters for each scenario
        Inputs:
@@ -778,7 +847,6 @@ def adjust_cov_pop_df(cov_pop_df, index, param_df):
                                           0.95, new_cov_pop_df[column]) 
     return new_cov_pop_df  
 
-#~ CHECK THIS FUNCTION
 def adjust_cov_pop_for_trials(cov_pop_dict, param_dict):
     """Adjusts the cov_pop_dict so its values are now a dictionary of scenario
        and dfs to use in each of those scenarios
@@ -807,7 +875,6 @@ def adjust_cov_pop_for_trials(cov_pop_dict, param_dict):
         new_cov_pop_dict[code] = cov_pop_scenarios_dict    
     return new_cov_pop_dict
     
-#~ CHECK THIS FUNCTION
 def merge_cov_pop_and_burden(burden_dict, cov_pop_dict):
     """Merges the dataframes within a nested dictionary structure
        
@@ -961,10 +1028,9 @@ def update_lives_touched(cov_pop_burden_dict, param_dict):
             cov_pop_burden_df = calculate_lives_touched(cov_pop_burden_df)
             lives_touched = cov_pop_burden_df['lives_touched'].sum()
             param_df.loc[index, 'lives_touched'] = lives_touched
-        param_dict[code] = param_df 
+        param_dict[code] = param_df
     return param_dict
     
-   
 def calculate_lives_improved(param_df):
     """Create a new column for lives improved in a df
        Inputs:
@@ -1010,7 +1076,7 @@ def isolate_probabilistic_rows(param_df, analysis_type):
     param_prob_df = param_df.loc[param_df.index.isin(range(1,num_trials+1))].copy()
     return param_prob_df
 
-def separate_param_dict(param_dict):
+def separate_param_dict(param_dict, analysis_type):
     """Creates a dictionary of two dictionaries, one for deterministic scenarios
        and another for probabilistic trials
        Inputs:
@@ -1019,8 +1085,197 @@ def separate_param_dict(param_dict):
            a dict of two dicts 
     """
     deterministic_dict = {k: isolate_deterministic_rows(v) for k, v in param_dict.items()}
-    probabilistic_dict = {k: isolate_probabilistic_rows(v) for k, v in param_dict.items()}
+    probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) for k, v in param_dict.items()}
     return {'det': deterministic_dict, 'prob': probabilistic_dict}
+ 
+def tornado_matplotlib(graph_data, base, directory, file_name):
+    """Creates a tornado diagram and saves it to a prespecified directory
+       Inputs:
+           graphs_data - a df which must contain the columns 'variables' for 
+               the names of the variables being graphed, 'lower' for the lower
+               bounds of the deterministic sensitivity and 'ranges' for the total
+               range between the lower and upper
+           base - a float with the base case value
+           directory - str - a path to a directory where the plot should be saved
+           file_name - str- a useful name by which the plot with be saved
+       Exports:
+           A chart to the prespecified directory
+    """
+    # Sort the graph data so the widest range is at the top and reindex
+    graph_data.copy()
+    graph_data = graph_data.sort_values('ranges', ascending = False)
+    graph_data.index = list(range(len(graph_data.index)))[::-1]
+
+    # The actual drawing part
+    fig = plt.figure()
+    
+    # Plot the bars, one by one
+    for index in graph_data.index:
+        # The width of the 'low' and 'high' pieces
+        low = graph_data.loc[index, 'lower']
+        value = graph_data.loc[index, 'ranges']
+        low_width = base - low
+        high_width = low + value - base
+    
+        # Each bar is a "broken" horizontal bar chart
+        plt.broken_barh(
+            [(low, low_width), (base, high_width)],
+            (index - 0.4, 0.8),
+            facecolors=['red', 'green'],  # Try different colors if you like
+            edgecolors=['black', 'black'],
+            linewidth=1,
+        )
+    
+    # Draw a vertical line down the middle
+    plt.axvline(base, color='black', linestyle='dashed')
+    
+    # Position the x-axis and hide unnecessary axes
+    ax = plt.gca()  # (gca = get current axes)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.xaxis.set_ticks_position('bottom')
+    
+    # Make the y-axis display the variables
+    plt.yticks(graph_data.index.tolist(), graph_data['variables'])
+    
+    # Set the portion of the x- and y-axes to show
+    plt.xlim(left = 0)
+    plt.ylim(-1, len(graph_data.index))
+    
+    # Stop scientific formats
+    ax.get_xaxis().get_major_formatter().set_scientific(False)
+    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+    fig.autofmt_xdate()
+    
+    # Change axis text format
+    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.family': 'calibri'})
+    
+    # Make it tight format 
+    plt.tight_layout()
+    
+    # Set up export path and export the chart
+    path = directory+file_name+'.png'
+    fig.savefig(path)
+    print('Please find the chart at', path)
+    plt.close(fig=None)
+
+def probability_histogram(graph_data, variable, directory, file_name):
+    """Creates a probability histogram and exports it to a directory
+       Inputs:
+           graph_data - df 
+           variable - str - the variable in graph_data to be histogrammed
+           directory - str - a path to a directory where the plot should be saved
+           file_name - str- a useful name by which the plot with be saved
+       Exports:
+           A chart to the prespecified directory
+    """
+    # Get the right series and make it np
+    graph_data = graph_data[variable]
+    
+    # Calculate confidence intervals
+    upper = graph_data.quantile(0.975)
+    lower = graph_data.quantile(0.025)
+    # Histogram:
+    # Bin it
+    n, bin_edges = np.histogram(graph_data, 30)
+    # Normalize it, so that every bins value gives the probability of that bin
+    bin_probability = n/float(n.sum())
+    # Get the mid points of every bin
+    bin_middles = (bin_edges[1:]+bin_edges[:-1])/2.
+    # Compute the bin-width
+    bin_width = bin_edges[1]-bin_edges[0]
+    # Plot the histogram as a bar plot
+    fig, ax = plt.subplots()
+    plt.bar(bin_middles, bin_probability, width=bin_width)
+    
+    # Add 95% confidence interval lines
+    plt.axvline(upper, color='black', linestyle='dashed')
+    plt.axvline(lower, color='black', linestyle='dashed')
+    
+    # Axis labels
+    label = re.sub('_', ' ', variable).title()
+    plt.xlabel(label)
+    plt.ylabel('Probability')
+    
+    # Set the portion of the x- and y-axes to show
+    plt.xlim(left = 0)
+    
+    # Stop axis scientific formats
+    ax.get_xaxis().get_major_formatter().set_scientific(False)
+    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+    ax.get_yaxis().get_major_formatter().set_scientific(False)
+    fig.autofmt_xdate()
+    
+    # Change axis text format
+    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.family': 'calibri'})
+    
+    # Make it tight format 
+    plt.tight_layout()
+    
+    # Export
+    path = directory+file_name+'.png'    
+    plt.savefig(path)
+    print('Please find the chart at', path)
+    plt.close(fig=None)
+
+def restructure_graph_data_deterministic(param_df, variable):
+    """Restructures data to the form needed by the tornado diagram
+       Inputs:
+           param_df - a df that must have indexes representing the different
+               deterministic scenarios being modelled
+           variable - str - the name of the variable to be plotted on the x axis
+               normally either lives touched or lives improved
+       Returns:
+           base - float -  the base case estimate for the variable
+           graph_data - a df in the format needed for tornado_matplotlib()
+    """
+    base = param_df.loc['base', variable]
+    lower_series = param_df[param_df.index.str.contains('lower')][variable]
+    lower_series.name = 'lower'
+    lower_series.index = [re.sub('_lower', '', index) 
+                          for index in lower_series.index]
+    upper_series = param_df[param_df.index.str.contains('upper')][variable]
+    upper_series.name = 'upper'
+    upper_series.index = [re.sub('_upper', '', index) 
+                          for index in upper_series.index]
+    graph_data = pd.concat([upper_series, lower_series], axis = 1)
+    graph_data['ranges'] = abs(graph_data['upper'] - graph_data['lower'])
+    graph_data['variables'] = graph_data.index
+    graph_data.index = range(len(graph_data.index))
+    return base, graph_data
+
+def draw_graphs_export(probabilistic_dict, deterministic_dict, directory):
+    """Exports graphs to a given directory based on the data it is given
+           Inputs:
+               probabilistic_dict - dict - keys are codes and values are dfs
+                   of trial parameters and estimates
+               deterministic_dict - dict - keys are codes and values are dfs
+                   of scenario parameters and estimates
+               directory - str - the directory where graphs should be exported
+           Exports:
+               4 graphs for each code to the directory
+    """
+    for code in probabilistic_dict.keys():
+        graph_data = probabilistic_dict[code]
+        variable = 'lives_touched'
+        file_name = code+'_probabilistic_'+variable
+        probability_histogram(graph_data, variable, directory, file_name)
+        variable = 'lives_improved'
+        file_name = code+'_probabilistic_'+variable
+        probability_histogram(graph_data, variable, directory, file_name)
+    
+    for code in deterministic_dict.keys():
+        param_df = deterministic_dict[code]
+        variable = 'lives_touched'
+        base, graph_data = restructure_graph_data_deterministic(param_df, variable)
+        file_name = code+'_deterministic_'+variable
+        tornado_matplotlib(graph_data, base, directory, file_name)
+        variable = 'lives_improved'
+        base, graph_data = restructure_graph_data_deterministic(param_df, variable)
+        file_name = code+'_deterministic_'+variable
+        tornado_matplotlib(graph_data, base, directory, file_name)
 
 def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all):
     """Puts the new values for lives_touched and lives_improved (including the
@@ -1042,63 +1297,87 @@ def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all
         param_user_all.loc[code, 'lives_touched_975'] = prob_df['lives_touched'].quantile(0.975)
         param_user_all.loc[code, 'lives_improved_025'] = prob_df['lives_improved'].quantile(0.025)
         param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
-    return param_user_all        
+    return param_user_all
 
-#~ Write in graphing
-#~ Write in exporting charts and data
+def export_estimates(param_user_all):
+    """Overwrite the main csv with the updated version of estimates / paramters
+       Inputs:
+           param_user_all - a df of parameters and estimates
+       Writes:
+           csvs to two different locations
+    """
+    # Write back up csv
+    time_now = datetime.datetime.now()
+    data_str = time_now.strftime('%Y_%m_%d_%H_%M')
+    back_up_path = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/LTLI_parameters_python_'+data_str+'.csv'
+    param_user_all.to_csv(back_up_path)
+    # Overwrite imported csv
+    param_user_all.to_csv('LTLI_parameters_python.csv')
 
 # Code run sequentially
+def main():
+    pass
+
+if __name__ == "__main__":
+   
+    # Write in a parameter checking function as the first function
+    check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
     
-# Write in a parameter checking function as the first function
-check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
-
-# Vary the parameter dict depending on whether you are running all the analysis
-# or just a subset
-param_user = check_run_all(analysis_type, param_user_dict)
-
-# Create different versions of the parameters ready for sensitivity analyses
-deterministic_dict = restructure_to_deterministic(analysis_type, param_user)
-probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
-
-# Combine into one dict
-param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
-              for k in deterministic_dict.keys()}
-
-#~ SHOULD PROBABLY ADD IN A FUNCTION HERE TO CLEAR OUT THE VALUES OF LTLI TO AVOID POTENTIAL CONFUSION
-
-# Get the disease burden for each disease
-burden_dict = get_relevant_burden(param_dict, burden_all)
-
-# Adjust burden so it is in a dictionary of relevant burden dfs for each trial
-# respectively
-burden_dict = adjust_burden(burden_dict, param_dict)
-
-# Create the cov_pop_dict based on coverage for that type of intervention an
-# population
-cov_pop_dict = create_coverage_population_dict(coverage, population, param_dict)
-
-# Adjust cov_pop_dict so the values are now dicts where the keys are scenarios
-# and the values are dfs customised to the scenarios
-cov_pop_dict = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
-
-# Merge the burden and coverage / population dfs
-cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, cov_pop_dict)
-
-# Adjust the dfs in cov_pop_burden_dict for intervention factors such as the 
-# endemicity threshold, diagnostic inflation and intervention cut
-cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param_dict)
-
-# Calculate lives_touched and input them to 
-param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
-
-param_dict = update_lives_improved(param_dict)
-
-# Separate param dict into seperate dicts for further analyis
-param_dict_separated = separate_param_dict(param_dict)
-deterministic_dict = param_dict_separated['det']
-probabilistic_dict = param_dict_separated['prob']
-
-# Update param_user_all ready for export
-param_user_all = update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all)
+    # Vary the parameter dict depending on whether you are running all the analysis
+    # or just a subset
+    param_user = check_run_all(analysis_type, param_user_dict)
+    
+    # Create different versions of the parameters ready for sensitivity analyses
+    deterministic_dict = restructure_to_deterministic(analysis_type, param_user)
+    probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
+    
+    # Combine into one dict
+    param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
+                  for k in deterministic_dict.keys()}
+    
+    #~ SHOULD PROBABLY ADD IN A FUNCTION HERE TO CLEAR OUT THE VALUES OF LTLI TO AVOID POTENTIAL CONFUSION
+    
+    # Get the disease burden for each disease
+    burden_dict = get_relevant_burden(param_dict, burden_all)
+    
+    # Adjust burden so it is in a dictionary of relevant burden dfs for each trial
+    # respectively
+    burden_dict = adjust_burden(burden_dict, param_dict)
+    
+    # Create the cov_pop_dict based on coverage for that type of intervention an
+    # population
+    cov_pop_dict = create_coverage_population_dict(coverage, population, param_dict)
+    
+    # Adjust cov_pop_dict so the values are now dicts where the keys are scenarios
+    # and the values are dfs customised to the scenarios
+    cov_pop_dict = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
+    
+    # Merge the burden and coverage / population dfs
+    cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, cov_pop_dict)
+    
+    # Adjust the dfs in cov_pop_burden_dict for intervention factors such as the 
+    # endemicity threshold, diagnostic inflation and intervention cut
+    cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param_dict)
+    
+    # Calculate lives_touched and input them to 
+    param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
+    
+    param_dict = update_lives_improved(param_dict)
+    
+    # Separate param dict into seperate dicts for further analyis
+    param_dict_separated = separate_param_dict(param_dict, analysis_type)
+    deterministic_dict = param_dict_separated['det']
+    probabilistic_dict = param_dict_separated['prob']
+       
+    # Export graphs for all of the analyses
+    draw_graphs_export(probabilistic_dict, deterministic_dict, directory)
+    
+    # Update param_user_all ready for export
+    param_user_all = update_param_user_all(deterministic_dict, 
+                                           probabilistic_dict, 
+                                           param_user_all)
+    export_estimates(param_user_all)
+    
+    main()
 
 #~NEED TO FIND THE COVERAGE DATA nan I SAW?????
