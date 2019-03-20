@@ -29,7 +29,8 @@ directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/liv
 analysis_type = {'run_all' : True,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
-                 'num_trials' : 1000
+                 'num_trials' : 1000,
+                 'overwrite_parameters' : False
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
@@ -100,7 +101,8 @@ def check_analysis_type(analysis_type):
     # Take out the values that are supposed to be bools
     analysis_values = [analysis_type['run_all'], 
                        analysis_type['run_deterministic'],
-                       analysis_type['run_probabilistic']]
+                       analysis_type['run_probabilistic'],
+                       analysis_type['overwrite_parameters']]
     # Test to see if they are bools
     for value in analysis_values:
         if not type(value) is bool:
@@ -126,7 +128,7 @@ def check_columns(param_user_all):
 
     """
     necessary_columns = ['id_name', 'intervention_type', 'disease_1', 'disease_2', 
-                         'disease_3', 'age', 'id_code', 'population_upper', 
+                         'disease_3', 'age', 'population_upper', 
                          'population_mean', 'population_lower', 'population_SD', 
                          'disease_1_prop_mean', 'disease_1_prop_lower', 
                          'disease_1_prop_upper', 'disease_1_prop_SD', 
@@ -149,10 +151,10 @@ def check_columns(param_user_all):
                          'efficacy_SD', 'lives_touched', 'lives_touched_975', 
                          'lives_touched_025', 'lives_improved', 'lives_improved_975', 
                          'lives_improved_025', 'exception_count', 'exception_comment']
-    necessary_columns_present = [column in list(param_user_all) 
-                                for column in necessary_columns]
-    if not all(necessary_columns_present):
-        raise ValueError('Parameter inputs are missing columns, see check_columns function for expected list')
+    necessary_columns_missing = [column for column in necessary_columns
+                                 if column not in list(param_user_all) ]
+    if len(necessary_columns_missing)>0:
+        raise ValueError('The following columns are missing from the parameter csv '+str(necessary_columns_missing))
 
 def check_iterable_1_not_smaller(iterable_1, iterable_2):
     """Checks two iterables of the same length for whether each element in 1
@@ -212,7 +214,7 @@ def check_diag_ther(param_user_all):
            param_user_all - a df of all user inputted parameters
     """
     # Filter the df so it is relevant to therapeutics and diagnostics
-    ther_diag_param = param_user_all[param_user_all.intervention_type.isin(['Treatment', 'Diagnostic'])]
+    ther_diag_param = param_user_all[param_user_all.intervention_type.isin(['Therapeutic', 'Therapeutic mental health', 'Diagnostic'])]
     # Find the parameters that aren't relevant for the analysis and make sure they won't affect results
     population_columns = [column for column in param_user_all if re.search('population', column)]
     endem_columns = [column for column in param_user_all if re.search('endem.*[d-z]$', column)]
@@ -289,10 +291,13 @@ def check_coverage(coverage):
     """
     expected_names = ['vaccine_coverage',  'vaccine_prob_cover',
                      'diagnostic_coverage', 'diagnostic_prob_cover',
-                     'therapeutic_coverage', 'therapeutic_prob_cover']
-    expected_names_present = [name in list(coverage) for name in expected_names]
-    if not all(expected_names_present):
-        raise ValueError('The population df does not have the expected columns')
+                     'therapeutic_coverage', 'therapeutic_prob_cover',
+                     'therapeutic_mental_health_coverage', 
+                     'therapeutic_mental_health_prob_cover']
+    expected_names_missing = [name for name in expected_names
+                              if name not in list(coverage)]
+    if len(expected_names_missing)>0:
+        raise ValueError('The following columns are missing from the population df '+str(expected_names_missing))
     # Check the index for country names
     elif 'France' not in coverage.index:
         raise ValueError('The population df does not have countries as indexes')
@@ -578,11 +583,12 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
             data = np.array([mean for i in range(1,num_trials+1)])
         # Use normal for things that vary around 1, inflation factor will need
         # changing probaby #~
-        elif column in ['population', 'inflation_factor', 'coverage']:    
+        elif column in ['population', 'inflation_factor', 'share',
+                        'coverage', 'coverage_prob']:    
             data = norm.rvs(size = num_trials, loc = mean, scale = sd)
         # Use beta distribution for all paramters that are a proportion
         elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
-                        'coverage_prob', 'intervention_cut', 'share', 'efficacy']:
+                        'intervention_cut', 'efficacy']:
             data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
                             b = beta_moments(mean, sd)['beta'], 
                             size = num_trials)
@@ -794,11 +800,17 @@ def create_coverage_population_dict(coverage, population, param_dict):
     for code in param_dict.keys():
         new_coverage = coverage.copy()
         population = population.copy()   
-        # Select therapeutic coverage columns if it is a treatment (therapeutic)
-        if param_dict[code]['intervention_type'][0] == 'Treatment':
+        # Select therapeutic coverage columns if it is a Therapeutic (therapeutic)
+        if param_dict[code]['intervention_type'][0] == 'Therapeutic':
             new_coverage = new_coverage[['country',
                                  'therapeutic_coverage', 
                                  'therapeutic_prob_cover']]
+        # Select therapeutic mental health coverage columns if it is a therapeutic
+        # for a mental health condition
+        elif param_dict[code]['intervention_type'][0] == 'Therapeutic mental health':
+            new_coverage = new_coverage[['country', 
+                                 'therapeutic_mental_health_coverage', 
+                                 'therapeutic_mental_health_prob_cover']]
         # Select diagnostics coverage columns if it is a diagnostic
         elif param_dict[code]['intervention_type'][0] == 'Diagnostic':
             new_coverage = new_coverage[['country', 
@@ -812,7 +824,7 @@ def create_coverage_population_dict(coverage, population, param_dict):
         else:
             raise ValueError('The value of intervention_type for '+code+' is not valid')
         # Create new column names and rename
-        new_column_names = {column: re.sub('vaccine_|diagnostic_|therapeutic_', '', column) 
+        new_column_names = {column: re.sub('vaccine_|diagnostic_|therapeutic_mental_health_|therapeutic_', '', column) 
                             for column in list(new_coverage)}
         new_coverage = new_coverage.rename(columns = new_column_names)
         # Merge the coverage and population data
@@ -909,13 +921,15 @@ def create_target_population(cov_pop_burden_df, param_df, index):
            cov_pop_burden_df - a df which must contain 'incidence_number' and 
                'pop_0-0' columns
            param_df - a df of parameters which must contain the column 'intervention_type'
-               where all of the values are 'Treatment', 'Diagnostic' or 'Vaccine'
+               where all of the values are 'Therapeutic', 'Diagnostic' or 'Vaccine'
            index - a string that is one of the indexes of param_df
        Returns:
            a cov_pop_burden_df with target_pop column added
     """
     # Select incidence as the target population if it is a therapeutic or diagnostic
-    if param_df.loc[index, 'intervention_type'] == 'Treatment':
+    if param_df.loc[index, 'intervention_type'] == 'Therapeutic':
+        cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
+    elif param_df.loc[index, 'intervention_type'] == 'Therapeutic mental health':
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
     elif param_df.loc[index, 'intervention_type'] == 'Diagnostic':
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
@@ -1299,7 +1313,7 @@ def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all
         param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
     return param_user_all
 
-def export_estimates(param_user_all):
+def export_estimates(param_user_all, analysis_type):
     """Overwrite the main csv with the updated version of estimates / paramters
        Inputs:
            param_user_all - a df of parameters and estimates
@@ -1312,7 +1326,8 @@ def export_estimates(param_user_all):
     back_up_path = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/LTLI_parameters_python_'+data_str+'.csv'
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
-    param_user_all.to_csv('LTLI_parameters_python.csv')
+    if analysis_type['overwrite_parameters']:
+        param_user_all.to_csv('LTLI_parameters_python.csv')
 
 # Code run sequentially
 def main():
@@ -1376,8 +1391,10 @@ if __name__ == "__main__":
     param_user_all = update_param_user_all(deterministic_dict, 
                                            probabilistic_dict, 
                                            param_user_all)
-    export_estimates(param_user_all)
+    export_estimates(param_user_all, analysis_type)
     
     main()
 
 #~NEED TO FIND THE COVERAGE DATA nan I SAW?????
+    
+# Write in corrections so therapeutic mental health can pull in the right coverage buckets
