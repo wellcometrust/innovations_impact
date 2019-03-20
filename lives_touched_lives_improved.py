@@ -26,7 +26,7 @@ directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/liv
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
-analysis_type = {'run_all' : True,
+analysis_type = {'run_all' : False,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
@@ -142,9 +142,9 @@ def check_columns(param_user_all):
                          'inflation_factor_mean', 'inflation_factor_lower', 
                          'inflation_factor_SD', 'intervention_cut_upper', 
                          'intervention_cut_mean', 'intervention_cut_lower', 
-                         'intervention_cut_SD', 'coverage_prob_upper', 
-                         'coverage_prob_mean', 'coverage_prob_lower', 
-                         'coverage_prob_SD', 'coverage_upper', 'coverage_mean', 
+                         'intervention_cut_SD', 'prob_cover_upper', 
+                         'prob_cover_mean', 'prob_cover_lower', 
+                         'prob_cover_SD', 'coverage_upper', 'coverage_mean', 
                          'coverage_lower', 'coverage_SD', 'coverage_below_threshold', 
                          'share_upper', 'share_mean', 'share_lower', 'share_SD', 
                          'efficacy_upper', 'efficacy_mean', 'efficacy_lower', 
@@ -449,8 +449,8 @@ def scenario_param(param_user, param_list, id_code):
     # all the parameters have standard names (no upper, lower, mean)
     param_indexes = param.index.values.tolist()
     param_indexes_new = [re.sub('_mean|_lower|_upper', '', x) 
-                              if re.search('mean|lower|upper', x) else x 
-                              for x in param_indexes]
+                         if re.search('mean|lower|upper', x) else x 
+                         for x in param_indexes]
     # Generate mapping of old indexes to new indexes and use that to rename
     indexes_dict = lists_to_dict(param_indexes, param_indexes_new)
     param = param.rename(indexes_dict)
@@ -584,7 +584,7 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
         # Use normal for things that vary around 1, inflation factor will need
         # changing probaby #~
         elif column in ['population', 'inflation_factor', 'share',
-                        'coverage', 'coverage_prob']:    
+                        'coverage', 'prob_cover']:    
             data = norm.rvs(size = num_trials, loc = mean, scale = sd)
         # Use beta distribution for all paramters that are a proportion
         elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
@@ -675,9 +675,12 @@ def select_columns_burden(burden_df, index):
     for root in column_roots:    
         try:
             int(index)
-            #~normal doesn't allow for much higher burden as in conditions like visceral leishmaniasis
-            new_burden_df[root + '_mean'] = norm.rvs(loc = new_burden_df[root + '_mean'],
-                     scale = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/3)
+            #~ changed from normal to gamma
+            mean = new_burden_df[root + '_mean']
+            sd = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/2
+            new_burden_df[root + '_mean'] = gamma.rvs(a = gamma_moments(mean, sd)['shape'], 
+                             scale = gamma_moments(mean, sd)['scale'], 
+                             size = 1)
             new_burden_df[root + '_mean'] = np.where(new_burden_df[root + '_mean'] <0, 
                                             0, new_burden_df[root + '_mean'])
         except ValueError:
@@ -850,11 +853,15 @@ def adjust_cov_pop_df(cov_pop_df, index, param_df):
     for column in pop_columns:
         new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'population']
     # Adjust coverage columns by the coverage assumption for this scenario
-    cov_columns = [column for column in list(new_cov_pop_df) if re.search('prob_cover', column)]
+    cov_columns = [column for column in list(new_cov_pop_df) if re.search('coverage', column)]
     for column in cov_columns:
         new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'coverage']
-    #~ Do we need another assumption and adjustment for coverage achieved?
-    #~ This would be where to model herd immunity
+        new_cov_pop_df[column] = np.where(new_cov_pop_df[column] > 0.95, 
+                                          0.95, new_cov_pop_df[column])
+    # Adjust prob_cover columns by the coverage assumption for this scenario
+    cov_columns = [column for column in list(new_cov_pop_df) if re.search('prob_cover', column)]
+    for column in cov_columns:
+        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'prob_cover']
         new_cov_pop_df[column] = np.where(new_cov_pop_df[column] > 0.95, 
                                           0.95, new_cov_pop_df[column]) 
     return new_cov_pop_df  
@@ -1257,6 +1264,7 @@ def restructure_graph_data_deterministic(param_df, variable):
     graph_data = pd.concat([upper_series, lower_series], axis = 1)
     graph_data['ranges'] = abs(graph_data['upper'] - graph_data['lower'])
     graph_data['variables'] = graph_data.index
+    graph_data = graph_data[graph_data['ranges']>0]
     graph_data.index = range(len(graph_data.index))
     return base, graph_data
 
@@ -1291,7 +1299,7 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, directory):
         file_name = code+'_deterministic_'+variable
         tornado_matplotlib(graph_data, base, directory, file_name)
 
-def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all):
+def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
     """Puts the new values for lives_touched and lives_improved (including the
        95% confidence interval upper and lower bounds)
        Inputs:
@@ -1302,7 +1310,7 @@ def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all
                are dfs where columns are 'lives_touched' and 'lives_improved'
            param_user_all - a df where indexes are id_codes 
     """
-    for code in param_user_all.index:
+    for code in param_user.keys():
         determ_df = deterministic_dict[code]
         prob_df = probabilistic_dict[code]
         param_user_all.loc[code, 'lives_touched'] = determ_df.loc['base', 'lives_touched']
@@ -1390,7 +1398,8 @@ if __name__ == "__main__":
     # Update param_user_all ready for export
     param_user_all = update_param_user_all(deterministic_dict, 
                                            probabilistic_dict, 
-                                           param_user_all)
+                                           param_user_all,
+                                           param_user)
     export_estimates(param_user_all, analysis_type)
     
     main()
