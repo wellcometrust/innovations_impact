@@ -26,7 +26,7 @@ directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/liv
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
-analysis_type = {'run_all' : False,
+analysis_type = {'run_all' : True,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
@@ -1240,6 +1240,49 @@ def probability_histogram(graph_data, variable, directory, file_name):
     plt.savefig(path)
     print('Please find the chart at', path)
     plt.close(fig=None)
+    
+def bridge_plot(graph_data, directory, file_name):
+    """Plots a bridge bar chart and exports it to a directory
+       Inputs:
+           graph_data - df with the columns stage, adjustment and remainder
+           directory - str - a path to a directory where the plot should be saved
+           file_name - str- a useful name by which the plot with be saved
+       Exports:
+           A chart to the prespecified directory
+    """
+    ind = np.arange(len(graph_data.index))    # the x locations for the groups
+    width_remainder = 0.4       # the width of the bars: can also be len(x) sequence
+    width_adjustment = 0.2
+    
+    fig, ax = plt.subplots()
+    
+    p1 = plt.bar(ind, graph_data['remainder'], width_remainder)
+    p2 = plt.bar(ind, graph_data['adjustment'], width_adjustment,
+                 bottom=graph_data['remainder'])
+    connector = plt.plot(graph_data['remainder'], marker='o', color='k')
+       
+    plt.ylabel('Number of people')
+    plt.title('Number of people at different model stages')
+    plt.xticks(ind, graph_data['stage'])
+    plt.legend((p1[0], p2[0]), ('Remainder', 'Adjustment'))
+    
+    # Stop axis scientific formats
+    ax.get_yaxis().get_major_formatter().set_scientific(False)
+    ax.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+    fig.autofmt_xdate()
+    
+    # Change axis text format
+    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.family': 'calibri'})
+    
+    # Make it tight format 
+    plt.tight_layout()
+    
+    # Export
+    path = directory+file_name+'.png'    
+    plt.savefig(path)
+    print('Please find the chart at', path)
+    plt.close(fig=None)
 
 def restructure_graph_data_deterministic(param_df, variable):
     """Restructures data to the form needed by the tornado diagram
@@ -1267,6 +1310,65 @@ def restructure_graph_data_deterministic(param_df, variable):
     graph_data = graph_data[graph_data['ranges']>0]
     graph_data.index = range(len(graph_data.index))
     return base, graph_data
+
+def get_bridging_data(bridging_cov_pop_burden_dict, param_user_dict):
+    """
+    """
+    for key in bridging_cov_pop_burden_dict.keys():
+        intevention_type = param_user_dict[key]['intervention_type']
+        bridging_df = bridging_cov_pop_burden_dict[key]
+        if intervention_type == 'Vaccine':
+            bridging_df['birth_cohort_endem'] = np.where(bridging_df['coverage']>0.01,
+                                                         bridging_df['target_population'],
+                                                         0)
+            bridging_df['lives_touched_base'] = bridging_df['birth_cohort_endem']*bridging_df['prob_cover']*bridging_df['coverage']
+            bridging_df['lives_touched'] = bridging_df['lives_touched_base']*param_user_dict[key]['intervention_cut']
+            bridging_df['lives_improved'] = bridging_df['lives_touched']*param_user_dict[key]['efficacy']
+        elif intervention_type == 'Diagnostic':
+            bridging_df['naive_incidence_number'] = bridging_df['incidence_number']/#real hack to get this out, going to have to rewrite other functions
+           # bridging_df['lives_touched_base'] = bridging_df['birth_cohort_endem']*bridging_df['prob_cover']*bridging_df['coverage']
+           # bridging_df['lives_touched'] = bridging_df['lives_touched_base']*param_user_dict[key]['intervention_cut']
+           # bridging_df['lives_improved'] = bridging_df['lives_touched']*param_user_dict[key]['efficacy']
+
+        elif re.search('Therapeutic', intevention_type):
+            stages = ['Total patient pool', 'Relevant patient pool', 
+                      'Expected lives touched\nfor a base therapeutic',
+                      'Lives touched', 'Lives improved']
+        else:
+            raise ValueError(intervention_type+' is not a recognised intervention_type')
+            
+def restructure_bridging_data_for_graph:
+    """
+    """
+    for key in bridging_cov_pop_burden_dict.keys():
+            if intervention_type == 'Vaccine':
+            stages = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
+                      'Expected lives touched\nfor a base vaccine\nin endemic countries',
+                      'Lives touched', 'Lives improved']
+            remainder = [bridging_df['target_population'].sum(),
+                         ,
+                         
+                         
+                        ]
+            adjustment = 
+        elif intervention_type == 'Diagnostic':
+            stages = ['Total patient pool', 'Relevant patient pool', 
+                      'Target diagnostic pool',
+                      'Expected lives touched\nfor a base diagnostic',
+                      'Lives touched', 'Lives improved']
+            remainder = [,
+                         bridging_df['incidence_number'].sum(),
+                         bridging_df['target_population'].sum(),
+                         ,
+                         ,
+                         ]
+        elif re.search('Therapeutic', intevention_type):
+            stages = ['Total patient pool', 'Relevant patient pool', 
+                      'Expected lives touched\nfor a base therapeutic',
+                      'Lives touched', 'Lives improved']
+        else:
+            raise ValueError(intervention_type+' is not a recognised intervention_type')
+            
 
 def draw_graphs_export(probabilistic_dict, deterministic_dict, directory):
     """Exports graphs to a given directory based on the data it is given
@@ -1391,7 +1493,11 @@ if __name__ == "__main__":
     param_dict_separated = separate_param_dict(param_dict, analysis_type)
     deterministic_dict = param_dict_separated['det']
     probabilistic_dict = param_dict_separated['prob']
-       
+    
+    # Create base dict for bridging diagram
+    bridging_cov_pop_burden_dict = {k: cov_pop_burden_dict[k]['base']
+                                    for k in cov_pop_burden_dict.keys()}
+    
     # Export graphs for all of the analyses
     draw_graphs_export(probabilistic_dict, deterministic_dict, directory)
     
