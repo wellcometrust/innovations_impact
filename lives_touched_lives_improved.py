@@ -34,7 +34,7 @@ analysis_type = {'run_all' : True,
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
-param_user_all = pd.read_csv('LTLI_parameters_python.csv')
+param_user_all = pd.read_csv('LTLI_parameters.csv')
 param_user_all = param_user_all.set_index('id_code')
 param_user_dict = {code : param_user_all.loc[code] 
                    for code in param_user_all.index.tolist()}
@@ -72,7 +72,7 @@ population = population.rename(columns = pop_new_names)
 population = population.set_index(keys = 'country', drop = True)
 
 # Importing the relevant disease burden data
-burden_all = pd.read_csv('GBD_data_wide_2017.csv')
+burden_all = pd.read_csv('gbd_data_wide_2017.csv')
 
 burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
 
@@ -259,7 +259,7 @@ def check_burden(burden_all):
                they are 'measure_metric', there are columns for 'country', 
                'age', 'cause'
     """
-    expected_columns = ['age', 'country', 'cause']
+    expected_columns = ['age', 'super_region', 'region', 'country', 'cause']
     column_name_check = [column in list(burden_all) for column in expected_columns]
     if not all(column_name_check):
         raise ValueError('check that age, country and cause are in burden all')
@@ -345,6 +345,15 @@ def check_run_all(analysis_type, param_user_dict):
             id_user = input("That is not a valid id_code, please try again: ")
         param_user_dict = {id_user: param_user_dict[id_user]} 
     return param_user_dict
+
+def clear_exceptions(param_user_all, param_dict):
+    """
+    """
+    new_param_user_all = param_user_all.copy()
+    for code in param_dict.keys():
+        new_param_user_all.loc[code, 'exception_count'] = 0
+        new_param_user_all.loc[code, 'exception_comment'] = '.'
+    return(new_param_user_all)
 
 def index_last(string, char):
     """provides the index of the last character rather than the first
@@ -697,8 +706,8 @@ def select_columns_burden(burden_df, index):
     # Rename columns
     new_burden_df = new_burden_df.rename(columns = new_column_names_dict)
     return new_burden_df
-    
-def strain_adjust_burden(burden_df, param_df, index):
+
+def strain_adjust_burden_df(burden_df, param_df, index):
     """Adjusts a data frame of disease burden downwards in case not all of the
        patients would benefit from the interventions (due to sub disease strains
        or other factors)
@@ -717,7 +726,7 @@ def strain_adjust_burden(burden_df, param_df, index):
     # Copy the burden_df to avoid side effects
     new_burden_df = burden_df.copy()
     # Create a list of burden columns because they are the form 'measure_metric'
-    column_list = [column for column in list(new_burden_df) if re.search('_', column)]
+    column_list = [column for column in list(new_burden_df) if re.search('number|rate', column)]
     # Create a mapping of the disease and proportion
     disease_dict = {k: k+"_prop" for k in ['disease_1', 'disease_2', 'disease_3']}
     # Adjust the df for the substrain prop for each disease
@@ -728,7 +737,7 @@ def strain_adjust_burden(burden_df, param_df, index):
                                          new_burden_df[column])
     return new_burden_df
 
-def aggregate_burden(burden_df):
+def aggregate_burden_df(burden_df):
     """Sums the burden from various conditions targetted by the intervention
        Inputs:
            burden_df - a df with columns for country, age, cause and disease
@@ -743,19 +752,23 @@ def aggregate_burden(burden_df):
     causes = set(new_burden_df['cause'])
     new_cause_name = ', '.join(causes)
     # Aggregate by age and couttry
-    new_burden_df= new_burden_df.groupby(['country', 'age']).sum()
+    summed_burden_df = new_burden_df.groupby(['country', 'age']).sum()
     # Turn the indexes back into columns in a df
-    index_list = new_burden_df.index.tolist()
+    index_list = summed_burden_df.index.tolist()
     summed_df = pd.DataFrame(index_list, columns = ['country', 'age'], index = index_list)
     # Add the new cause name to the df
     summed_df['cause'] = new_cause_name
     # Merge the burden with the country, age group, and cause columns
-    summed_df = pd.concat([summed_df, new_burden_df], axis = 1)
+    summed_df = pd.concat([summed_df, summed_burden_df], axis = 1)
     # Reindex so the country is the only index
     summed_df.index = [i[0] for i in summed_df.index.tolist()]
+    # Merge in region / super region columns
+    other_columns = new_burden_df[['country', 'super_region', 'region']].drop_duplicates()
+    summed_df = summed_df.merge(other_columns, on = 'country')
+    summed_df.index = summed_df['country']
     return summed_df
     
-def adjust_burden(burden_dict, param_dict):
+def adjust_burden_dict(burden_dict, param_dict):
     """Adjusts the burden numbers down for substrains
        Inputs:
            burden_dict - a dict - keys are id_codes for the projects
@@ -778,12 +791,13 @@ def adjust_burden(burden_dict, param_dict):
         # for the trial
         for index in param_df.index.tolist():
             burden_df_index = select_columns_burden(burden_df, index)
-            burden_df_index = strain_adjust_burden(burden_df_index, param_df, index)
-            burden_df_index = aggregate_burden(burden_df_index)
+            burden_df_index = strain_adjust_burden_df(burden_df_index, param_df, index)
+            burden_df_index = aggregate_burden_df(burden_df_index)
             burden_scenarios_dict[index] = burden_df_index            
         # Add the new dictionary for the trials to the outer dictionary
         burden_dict_new[code] = burden_scenarios_dict
     return burden_dict_new
+
 
 def create_coverage_population_dict(coverage, population, param_dict):
     """Creates a dictionary where keys are id_codes and values are dfs
@@ -934,9 +948,7 @@ def create_target_population(cov_pop_burden_df, param_df, index):
            a cov_pop_burden_df with target_pop column added
     """
     # Select incidence as the target population if it is a therapeutic or diagnostic
-    if param_df.loc[index, 'intervention_type'] == 'Therapeutic':
-        cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
-    elif param_df.loc[index, 'intervention_type'] == 'Therapeutic mental health':
+    if re.search('Therapeutic', param_df.loc[index, 'intervention_type']):
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
     elif param_df.loc[index, 'intervention_type'] == 'Diagnostic':
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
@@ -1016,7 +1028,58 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
             cov_pop_burden_df = apply_intervention_cut(cov_pop_burden_df, param_df, index)
             cov_pop_burden_dict[code][index] = cov_pop_burden_df
     return cov_pop_burden_dict
-    
+
+def update_exceptions(param_user_all, code, new_comment):
+    """Updates exception_count and exception comment columns of param_user for
+       appropriate codes
+       Inputs:
+           param_user_all - a df of parameters and estimates
+           code - a str - id_code in the form "dddddd000d[A-Z]"
+           new_comment - a str - explaining the nature of the exception
+       Returns:
+           param_user_all - a df of parameters and estimates (with updated 
+               exception details)
+    """
+    param_user_all.loc[code, 'exception_count'] += 1
+    param_user_all.loc[code, 'exception_comment'] += (new_comment+' ')
+    return(param_user_all)
+
+def apply_geography_exceptions(cov_pop_burden_dict, param_user_all):
+    """Applying exceptions where target_pop is non-zero only in certain geographies
+       Inputs:
+           cov_pop_burden_dict - a nested dict where keys are id_codes and then
+               scenarios and the values are dfs
+           param_user_all - a df of parameters and estimates
+       Returns: 
+           cov_pop_burden_dict - updated with geographical expections applied
+    """
+    for code in cov_pop_burden_dict.keys():
+        cov_pop_burden_trials = cov_pop_burden_dict[code]
+        if code == '2123460002B':
+            # Regional exception based on assumed product profile
+            super_regions = ['South Asia']
+            for index in cov_pop_burden_trials.keys():
+                cov_pop_burden_df = cov_pop_burden_trials[index]
+                cov_pop_burden_df['target_pop'] = np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
+                                                           cov_pop_burden_df['target_pop'],
+                                                           0)
+            new_comment = 'Only allowed for coverage in South Asia as in the TPP'
+            update_exceptions(param_user_all, code, new_comment)
+        elif code == '2123460002C':
+            # Regional exception based on assumed product profile
+            super_regions = ["Sub-Saharan Africa"]
+            for index in cov_pop_burden_trials.keys():
+                cov_pop_burden_df = cov_pop_burden_trials[index]
+                cov_pop_burden_df['target_pop'] = np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
+                                                           cov_pop_burden_df['target_pop'],
+                                                           0)
+            new_comment = 'Only allowed for coverage in Africa as in the TPP.'
+            update_exceptions(param_user_all, code, new_comment)
+        else:
+            # As there is no expceptions relevant here
+            pass
+    return(cov_pop_burden_dict)
+        
 def calculate_lives_touched(cov_pop_burden_df):
     """Creates a column for lives touched by multiplying relevant columns
        Inputs:
@@ -1311,66 +1374,68 @@ def restructure_graph_data_deterministic(param_df, variable):
     graph_data.index = range(len(graph_data.index))
     return base, graph_data
 
-def get_bridging_data(bridging_cov_pop_burden_dict, param_user_dict):
+def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_user_dict):
     """
     """
-    for key in bridging_cov_pop_burden_dict.keys():
-        intevention_type = param_user_dict[key]['intervention_type']
-        bridging_df = bridging_cov_pop_burden_dict[key]
+    bridge_data_dict = {}
+    for key in base_cov_pop_burden_dict.keys():
+        intervention_type = param_user_dict[key]['intervention_type']
+        burden_df_unadjusted = burden_dict_unadjusted[key]        
+        cov_pop_burden_df = base_cov_pop_burden_dict[key]
+        # Create these columns because they are the same across modalities
+        cov_pop_burden_df['naive_incidence_number'] = aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
+        cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['target_pop']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']
+        cov_pop_burden_df['lives_touched'] = cov_pop_burden_df['lives_touched_base']*param_user_dict[key]['intervention_cut_mean']
+        cov_pop_burden_df['lives_improved'] = cov_pop_burden_df['lives_touched']*param_user_dict[key]['efficacy_mean']
         if intervention_type == 'Vaccine':
-            bridging_df['birth_cohort_endem'] = np.where(bridging_df['coverage']>0.01,
-                                                         bridging_df['target_population'],
+            # Create vaccine specific columns
+            cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
+                                                         cov_pop_burden_df['target_pop'],
                                                          0)
-            bridging_df['lives_touched_base'] = bridging_df['birth_cohort_endem']*bridging_df['prob_cover']*bridging_df['coverage']
-            bridging_df['lives_touched'] = bridging_df['lives_touched_base']*param_user_dict[key]['intervention_cut']
-            bridging_df['lives_improved'] = bridging_df['lives_touched']*param_user_dict[key]['efficacy']
-        elif intervention_type == 'Diagnostic':
-            bridging_df['naive_incidence_number'] = bridging_df['incidence_number']/#real hack to get this out, going to have to rewrite other functions
-           # bridging_df['lives_touched_base'] = bridging_df['birth_cohort_endem']*bridging_df['prob_cover']*bridging_df['coverage']
-           # bridging_df['lives_touched'] = bridging_df['lives_touched_base']*param_user_dict[key]['intervention_cut']
-           # bridging_df['lives_improved'] = bridging_df['lives_touched']*param_user_dict[key]['efficacy']
-
-        elif re.search('Therapeutic', intevention_type):
-            stages = ['Total patient pool', 'Relevant patient pool', 
-                      'Expected lives touched\nfor a base therapeutic',
-                      'Lives touched', 'Lives improved']
-        else:
-            raise ValueError(intervention_type+' is not a recognised intervention_type')
-            
-def restructure_bridging_data_for_graph:
-    """
-    """
-    for key in bridging_cov_pop_burden_dict.keys():
-            if intervention_type == 'Vaccine':
-            stages = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
+            cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['birth_cohort_endem']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']
+            # Aggregate the columns to make a relevant for the graph
+            stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
                       'Expected lives touched\nfor a base vaccine\nin endemic countries',
                       'Lives touched', 'Lives improved']
-            remainder = [bridging_df['target_population'].sum(),
-                         ,
-                         
-                         
+            remainder = [cov_pop_burden_df['target_pop'].sum(), 
+                         cov_pop_burden_df['birth_cohort_endem'].sum(),
+                         cov_pop_burden_df['lives_touched_base'].sum(),
+                         cov_pop_burden_df['lives_touched'].sum(),
+                         cov_pop_burden_df['lives_improved'].sum()
                         ]
-            adjustment = 
         elif intervention_type == 'Diagnostic':
-            stages = ['Total patient pool', 'Relevant patient pool', 
-                      'Target diagnostic pool',
-                      'Expected lives touched\nfor a base diagnostic',
-                      'Lives touched', 'Lives improved']
-            remainder = [,
-                         bridging_df['incidence_number'].sum(),
-                         bridging_df['target_population'].sum(),
-                         ,
-                         ,
-                         ]
-        elif re.search('Therapeutic', intevention_type):
-            stages = ['Total patient pool', 'Relevant patient pool', 
-                      'Expected lives touched\nfor a base therapeutic',
-                      'Lives touched', 'Lives improved']
+            # Aggregate the columns to make a relevant for the graph
+            stage = ['Total patient pool', 'Relevant patient pool', 
+                     'Target diagnostic pool',
+                     'Expected lives touched\nfor a base diagnostic',
+                     'Lives touched', 'Lives improved']
+            remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
+                         cov_pop_burden_df['incidence_number'].sum(),
+                         cov_pop_burden_df['target_pop'].sum(),
+                         cov_pop_burden_df['lives_touched_base'].sum(),
+                         cov_pop_burden_df['lives_touched'].sum(),
+                         cov_pop_burden_df['lives_improved'].sum()]            
+        elif re.search('Therapeutic', intervention_type):
+            # Aggregate the columns to make a relevant for the graph
+            stage = ['Total patient pool', 'Relevant patient pool', 
+                     'Expected lives touched\nfor a base therapeutic',
+                     'Lives touched', 'Lives improved']
+            remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
+                         cov_pop_burden_df['target_pop'].sum(),
+                         cov_pop_burden_df['lives_touched_base'].sum(),
+                         cov_pop_burden_df['lives_touched'].sum(),
+                         cov_pop_burden_df['lives_improved'].sum()]
         else:
             raise ValueError(intervention_type+' is not a recognised intervention_type')
-            
+        # Calculate the adjustment based on the remainder at each stage
+        adjustment = [0]+[remainder[i]-remainder[i+1] for i in range(len(remainder)-1)]
+        bridge_graph_df = pd.DataFrame({'stage':stage, 
+                                        'adjustment':adjustment, 
+                                        'remainder':remainder})
+        bridge_data_dict[key] = bridge_graph_df
+    return(bridge_data_dict)
 
-def draw_graphs_export(probabilistic_dict, deterministic_dict, directory):
+def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, directory):
     """Exports graphs to a given directory based on the data it is given
            Inputs:
                probabilistic_dict - dict - keys are codes and values are dfs
@@ -1400,6 +1465,11 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, directory):
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
         tornado_matplotlib(graph_data, base, directory, file_name)
+    
+    for code in bridge_graph_dict.keys():
+        file_name = code+'_bridge_graph'
+        graph_data = bridge_graph_dict[code]
+        bridge_plot(graph_data, directory, file_name)
 
 def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
     """Puts the new values for lives_touched and lives_improved (including the
@@ -1437,7 +1507,7 @@ def export_estimates(param_user_all, analysis_type):
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
     if analysis_type['overwrite_parameters']:
-        param_user_all.to_csv('LTLI_parameters_python.csv')
+        param_user_all.to_csv('LTLI_parameters.csv')
 
 # Code run sequentially
 def main():
@@ -1452,6 +1522,9 @@ if __name__ == "__main__":
     # or just a subset
     param_user = check_run_all(analysis_type, param_user_dict)
     
+    # Clear any previous exception comments for projects that are being modelled
+    param_user_all = clear_exceptions(param_user_all, param_user)
+    
     # Create different versions of the parameters ready for sensitivity analyses
     deterministic_dict = restructure_to_deterministic(analysis_type, param_user)
     probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
@@ -1463,11 +1536,11 @@ if __name__ == "__main__":
     #~ SHOULD PROBABLY ADD IN A FUNCTION HERE TO CLEAR OUT THE VALUES OF LTLI TO AVOID POTENTIAL CONFUSION
     
     # Get the disease burden for each disease
-    burden_dict = get_relevant_burden(param_dict, burden_all)
+    burden_dict_unadjusted = get_relevant_burden(param_dict, burden_all)
     
     # Adjust burden so it is in a dictionary of relevant burden dfs for each trial
     # respectively
-    burden_dict = adjust_burden(burden_dict, param_dict)
+    burden_dict= adjust_burden_dict(burden_dict_unadjusted, param_dict)
     
     # Create the cov_pop_dict based on coverage for that type of intervention an
     # population
@@ -1484,6 +1557,9 @@ if __name__ == "__main__":
     # endemicity threshold, diagnostic inflation and intervention cut
     cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param_dict)
     
+    # Apply various geographical exceptions see the updated
+    cov_pop_burden_dict = apply_geography_exceptions(cov_pop_burden_dict, param_user_all)
+    
     # Calculate lives_touched and input them to 
     param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
     
@@ -1494,12 +1570,15 @@ if __name__ == "__main__":
     deterministic_dict = param_dict_separated['det']
     probabilistic_dict = param_dict_separated['prob']
     
-    # Create base dict for bridging diagram
-    bridging_cov_pop_burden_dict = {k: cov_pop_burden_dict[k]['base']
-                                    for k in cov_pop_burden_dict.keys()}
+    # Create base dicts for bridging diagram          
+    base_cov_pop_burden_dict = {k: cov_pop_burden_dict[k]['base']
+                                for k in cov_pop_burden_dict.keys()}
+    
+    bridge_graph_dict = get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted,
+                                          param_user_dict)
     
     # Export graphs for all of the analyses
-    draw_graphs_export(probabilistic_dict, deterministic_dict, directory)
+    draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, directory)
     
     # Update param_user_all ready for export
     param_user_all = update_param_user_all(deterministic_dict, 
@@ -1510,6 +1589,5 @@ if __name__ == "__main__":
     
     main()
 
-#~NEED TO FIND THE COVERAGE DATA nan I SAW?????
     
 # Write in corrections so therapeutic mental health can pull in the right coverage buckets
