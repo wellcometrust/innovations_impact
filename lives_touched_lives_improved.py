@@ -563,6 +563,34 @@ def gamma_moments(mean, sd):
         shape = mean/scale
         return {'scale':scale, 'shape':shape}
 
+def gamma_moments_burden(mean, sd):
+    """Calculates the moments of a gamma distribution based on mean and sd
+       as they are more intuitive inputs
+       More info on gamma: https://en.wikipedia.org/wiki/Gamma_distribution
+       Inputs:
+           mean - a float - the chosen mean of the distribution
+           sd - a float - the chosen standard deviation of the distribution
+       Returns:
+           dict - keys: shape and scale, values of corresponding moments
+    """
+    if mean < 0:
+        raise ValueError('The mean must be above 0')
+    # To deal with case where burden is 0 in mean, lower and upper to ensure 
+    # that it stays very close to 0, which still allowing the burden simulation
+    # to run
+    elif mean == 0:
+        return {'scale':0, 'shape':100000}
+    elif sd == 0:
+        sd = mean/10
+        scale = sd**2/mean
+        shape = mean/scale
+        return {'scale':scale, 'shape':shape}
+    else:
+        scale = sd**2/mean
+        shape = mean/scale
+        return {'scale':scale, 'shape':shape}
+
+
 def create_prob_df(param_prob, id_code, new_columns, num_trials):
     """Simulate new columns of paramters probabilistically based on assumed 
        means and sds, these columns are then added the data frames
@@ -687,11 +715,14 @@ def select_columns_burden(burden_df, index):
             #~ changed from normal to gamma
             mean = new_burden_df[root + '_mean']
             sd = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/2
-            new_burden_df[root + '_mean'] = gamma.rvs(a = gamma_moments(mean, sd)['shape'], 
-                             scale = gamma_moments(mean, sd)['scale'], 
-                             size = 1)
+            prop_lower_mean = (new_burden_df[root + '_mean']/new_burden_df[root + '_mean']).mean()
+            gamma_vals = pd.DataFrame([gamma_moments_burden(mean_val, sd_val) for mean_val, sd_val in zip(mean, sd)])
+            new_burden_df[root + '_mean'] = gamma.rvs(a = gamma_vals['shape'], 
+                                                      scale = gamma_vals['scale'], 
+                                                      size = len(gamma_vals['shape']))
+            new_burden_df[root + '_mean'] = new_burden_df[root + '_mean'] * norm.rvs(1, (1-prop_lower_mean)/4)
             new_burden_df[root + '_mean'] = np.where(new_burden_df[root + '_mean'] <0, 
-                                            0, new_burden_df[root + '_mean'])
+                                                     0, new_burden_df[root + '_mean'])
         except ValueError:
             if index == 'burden_lower':
                 new_burden_df[root + '_mean'] = new_burden_df[root + '_lower']
