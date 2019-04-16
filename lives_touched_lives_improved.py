@@ -30,7 +30,7 @@ analysis_type = {'run_all' : True,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
-                 'overwrite_parameters' : False
+                 'overwrite_parameters' : True
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
@@ -1001,16 +1001,17 @@ def apply_endemicity_threshold(cov_pop_burden_df, param_df, index):
        Returns:
            a df with coverage reduced in geographies with burden below the threshold
     """
+    new_cov_pop_burden_df = cov_pop_burden_df.copy()
     # Defines which burden column is relevant for the endemicity threshold
     endem_thresh_column = param_df.loc[index, 'endem_thresh_metric']+'_rate'
     # Defines the threshold and coverage below the threshold
     endem_thresh = param_df.loc[index, 'endem_thresh']
     coverage_below_threshold = param_df.loc[index, 'coverage_below_threshold']
     # Applies the endemicity threshold
-    cov_pop_burden_df['coverage'] = np.where(cov_pop_burden_df[endem_thresh_column] < endem_thresh,
+    new_cov_pop_burden_df['coverage'] = np.where(new_cov_pop_burden_df[endem_thresh_column] < endem_thresh,
                      coverage_below_threshold,
-                     cov_pop_burden_df['coverage'])
-    return cov_pop_burden_df
+                     new_cov_pop_burden_df['coverage'])
+    return new_cov_pop_burden_df
 
 def apply_diagnostic_inflation(cov_pop_burden_df, param_df, index):
     """Inflates the target_pop in df 
@@ -1021,8 +1022,9 @@ def apply_diagnostic_inflation(cov_pop_burden_df, param_df, index):
        Returns:
            a df with inflated target_pop column
     """
-    cov_pop_burden_df['target_pop'] = cov_pop_burden_df['target_pop']*param_df.loc[index, 'inflation_factor']
-    return cov_pop_burden_df
+    new_cov_pop_burden_df = cov_pop_burden_df.copy()
+    new_cov_pop_burden_df['target_pop'] = new_cov_pop_burden_df['target_pop']*param_df.loc[index, 'inflation_factor']
+    return new_cov_pop_burden_df
 
 def apply_intervention_cut(cov_pop_burden_df, param_df, index):
     """Reduces prob_cover by the intervention_cut
