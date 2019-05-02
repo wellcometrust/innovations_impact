@@ -22,7 +22,6 @@ import os
 os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data')
 directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
 
-
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
@@ -30,7 +29,7 @@ analysis_type = {'run_all' : True,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
-                 'overwrite_parameters' : True
+                 'overwrite_parameters' : False
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
@@ -1205,7 +1204,7 @@ def separate_param_dict(param_dict, analysis_type):
     probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) for k, v in param_dict.items()}
     return {'det': deterministic_dict, 'prob': probabilistic_dict}
  
-def tornado_matplotlib(graph_data, base, directory, file_name):
+def tornado_matplotlib(graph_data, base, directory, file_name, variable):
     """Creates a tornado diagram and saves it to a prespecified directory
        Inputs:
            graphs_data - a df which must contain the columns 'variables' for 
@@ -1229,7 +1228,15 @@ def tornado_matplotlib(graph_data, base, directory, file_name):
     # Plot the bars, one by one
     for index in graph_data.index:
         # The width of the 'low' and 'high' pieces
-        low = graph_data.loc[index, 'lower']
+        
+        # If to ensure visualisation is resilient to lower value of parameter
+        # leading to higher estimate of variable
+        if graph_data.loc[index, 'upper']>graph_data.loc[index, 'lower']:
+            low = graph_data.loc[index, 'lower']
+            face_colours = ['red', 'green']
+        else:
+            low = graph_data.loc[index, 'upper']
+            face_colours = ['green', 'red']
         value = graph_data.loc[index, 'ranges']
         low_width = base - low
         high_width = low + value - base
@@ -1238,7 +1245,7 @@ def tornado_matplotlib(graph_data, base, directory, file_name):
         plt.broken_barh(
             [(low, low_width), (base, high_width)],
             (index - 0.4, 0.8),
-            facecolors=['red', 'green'],  # Try different colors if you like
+            facecolors= face_colours,  # Try different colors if you like
             edgecolors=['black', 'black'],
             linewidth=1,
         )
@@ -1251,6 +1258,11 @@ def tornado_matplotlib(graph_data, base, directory, file_name):
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.xaxis.set_ticks_position('bottom')
+    
+    # Set axis labels
+    label = re.sub('_', ' ', variable).title()
+    plt.xlabel(label)
+    plt.ylabel('Model Parameters')
     
     # Make the y-axis display the variables
     plt.yticks(graph_data.index.tolist(), graph_data['variables'])
@@ -1265,7 +1277,7 @@ def tornado_matplotlib(graph_data, base, directory, file_name):
     fig.autofmt_xdate()
     
     # Change axis text format
-    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.size': 12})
     plt.rcParams.update({'font.family': 'calibri'})
     
     # Make it tight format 
@@ -1325,7 +1337,7 @@ def probability_histogram(graph_data, variable, directory, file_name):
     fig.autofmt_xdate()
     
     # Change axis text format
-    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.size': 12})
     plt.rcParams.update({'font.family': 'calibri'})
     
     # Make it tight format 
@@ -1368,7 +1380,7 @@ def bridge_plot(graph_data, directory, file_name):
     fig.autofmt_xdate()
     
     # Change axis text format
-    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.size': 12})
     plt.rcParams.update({'font.family': 'calibri'})
     
     # Make it tight format 
@@ -1493,11 +1505,11 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
         variable = 'lives_touched'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, directory, file_name)
+        tornado_matplotlib(graph_data, base, directory, file_name, variable)
         variable = 'lives_improved'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, directory, file_name)
+        tornado_matplotlib(graph_data, base, directory, file_name, variable)
     
     for code in bridge_graph_dict.keys():
         file_name = code+'_bridge_graph'
