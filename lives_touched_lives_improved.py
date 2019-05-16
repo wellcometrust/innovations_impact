@@ -16,6 +16,9 @@ from scipy.stats import gamma
 from scipy.stats import beta
 import re
 import datetime
+from pptx import Presentation
+
+
 
 # Set working directory and options
 import os
@@ -29,7 +32,7 @@ analysis_type = {'run_all' : True,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
-                 'overwrite_parameters' : False
+                 'overwrite_parameters' : True
                   } 
 
 # Importing a csv of saved paramters and setting the id to be the index
@@ -625,7 +628,11 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
         # Use beta distribution for all paramters that are a proportion
         elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
                         'intervention_cut', 'efficacy']:
-            data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
+            # Disease prop may not be a proportion - may inflate the naive population
+            if (re.search('disease_[1-3]_prop', column) and mean>1):
+                data = norm.rvs(size = num_trials, loc = mean, scale = sd)
+            else:
+                data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
                             b = beta_moments(mean, sd)['beta'], 
                             size = num_trials)
         # Use gamma for parameters that are non-negative and have a right skew
@@ -1309,18 +1316,23 @@ def probability_histogram(graph_data, variable, directory, file_name):
     # Bin it
     n, bin_edges = np.histogram(graph_data, 30)
     # Normalize it, so that every bins value gives the probability of that bin
-    bin_probability = n/float(n.sum())
+    bin_probability = n/float(n.sum()) 
     # Get the mid points of every bin
     bin_middles = (bin_edges[1:]+bin_edges[:-1])/2.
     # Compute the bin-width
     bin_width = bin_edges[1]-bin_edges[0]
     # Plot the histogram as a bar plot
     fig, ax = plt.subplots()
-    plt.bar(bin_middles, bin_probability, width=bin_width)
+    plt.bar(bin_middles, bin_probability, width=bin_width, color = '#003170')
     
     # Add 95% confidence interval lines
     plt.axvline(upper, color='black', linestyle='dashed')
     plt.axvline(lower, color='black', linestyle='dashed')
+    
+    # Add 95% confidencei interval labels - REMOVED BECAUSE IT OVERLAPPED WITH BARS / LINES
+    # max_prob = max(bin_probability)
+    # plt.text((upper+lower/8), max_prob*2/3, 'Upper (97.5%)', rotation = 90)
+    # plt.text((lower-lower/5), max_prob*2/3, 'Lower (2.5%)', rotation = 90)
     
     # Axis labels
     label = re.sub('_', ' ', variable).title()
@@ -1364,13 +1376,13 @@ def bridge_plot(graph_data, directory, file_name):
     
     fig, ax = plt.subplots()
     
-    p1 = plt.bar(ind, graph_data['remainder'], width_remainder)
+    p1 = plt.bar(ind, graph_data['remainder'], width_remainder, color = '#003170')
     p2 = plt.bar(ind, graph_data['adjustment'], width_adjustment,
                  bottom=graph_data['remainder'])
     connector = plt.plot(graph_data['remainder'], marker='o', color='k')
        
     plt.ylabel('Number of people')
-    plt.title('Number of people at different model stages')
+    # plt.title('Number of people at different model stages')
     plt.xticks(ind, graph_data['stage'])
     plt.legend((p1[0], p2[0]), ('Remainder', 'Adjustment'))
     
@@ -1429,7 +1441,7 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
         cov_pop_burden_df = base_cov_pop_burden_dict[key]
         # Create these columns because they are the same across modalities
         cov_pop_burden_df['naive_incidence_number'] = aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
-        cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['target_pop']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']
+        cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['target_pop']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']/param_user_dict[key]['intervention_cut_mean']
         cov_pop_burden_df['lives_touched'] = cov_pop_burden_df['lives_touched_base']*param_user_dict[key]['intervention_cut_mean']
         cov_pop_burden_df['lives_improved'] = cov_pop_burden_df['lives_touched']*param_user_dict[key]['efficacy_mean']
         if intervention_type == 'Vaccine':
@@ -1437,7 +1449,7 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
             cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
                                                          cov_pop_burden_df['target_pop'],
                                                          0)
-            cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['birth_cohort_endem']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']
+            cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['birth_cohort_endem']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']/param_user_dict[key]['intervention_cut_mean']
             # Aggregate the columns to make a relevant for the graph
             stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
                       'Expected lives touched\nfor a base vaccine\nin endemic countries',
@@ -1516,6 +1528,67 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
         graph_data = bridge_graph_dict[code]
         bridge_plot(graph_data, directory, file_name)
 
+def graphs_to_slides(project_id):
+    """
+    """
+    folder_root = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+    template_location = folder_root + 'mm_template_impact.pptx'
+    export_location = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
+    prs = Presentation(template_location)
+        
+    main_slide = prs.slides[0]
+    
+    bridge_path = folder_root+project_id+'_bridge_graph.png'
+    bridge_box = main_slide.shapes[5]
+    bridge_top = bridge_box.top-10000
+    bridge_left = bridge_box.left-10000
+    main_slide.shapes.add_picture(bridge_path, top = bridge_top, left = bridge_left)
+    
+    lt_appendix_slide = prs.slides[1]
+    
+    lt_tornado_path = folder_root+project_id+'_deterministic_lives_touched.png'
+    lt_tornado_box = lt_appendix_slide.shapes[5]
+    lt_tornado_top = lt_tornado_box.top
+    lt_tornado_left = lt_tornado_box.left-10000
+    lt_appendix_slide.shapes.add_picture(lt_tornado_path, top = lt_tornado_top, left = lt_tornado_left)
+    
+    lt_histogram_path = folder_root+project_id+'_probabilistic_lives_touched.png'
+    lt_histogram_box = lt_appendix_slide.shapes[6]
+    lt_histogram_top = lt_histogram_box.top
+    lt_histogram_left = lt_histogram_box.left
+    lt_appendix_slide.shapes.add_picture(lt_histogram_path, top = lt_histogram_top, left = lt_histogram_left)
+    
+    li_appendix_slide = prs.slides[2]
+    
+    li_tornado_path = folder_root+project_id+'_deterministic_lives_improved.png'
+    li_tornado_box = li_appendix_slide.shapes[5]
+    li_tornado_top = li_tornado_box.top
+    li_tornado_left = li_tornado_box.left-10000
+    li_appendix_slide.shapes.add_picture(li_tornado_path, top = li_tornado_top, left = li_tornado_left)
+    
+    li_histogram_path = folder_root+project_id+'_probabilistic_lives_improved.png'
+    li_histogram_box = li_appendix_slide.shapes[6]
+    li_histogram_top = li_histogram_box.top-5000
+    li_histogram_left = li_histogram_box.left
+    li_appendix_slide.shapes.add_picture(li_histogram_path, top = li_histogram_top, left = li_histogram_left)
+    
+    new_dir = export_location+'/'+project_id
+    
+    try:
+        os.mkdir(new_dir)
+    except FileExistsError:
+        pass
+    
+    prs.save(new_dir+'/'+project_id+'_mm_impact_charts.pptx')
+    
+
+def create_all_slides(param_dict):
+    """
+    """
+    for project_id in param_dict.keys():
+        graphs_to_slides(project_id)
+    
+    
 def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
     """Puts the new values for lives_touched and lives_improved (including the
        95% confidence interval upper and lower bounds)
@@ -1624,6 +1697,9 @@ if __name__ == "__main__":
     
     # Export graphs for all of the analyses
     draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, directory)
+    
+    # Turn the graphs into formatted slides
+    create_all_slides(param_dict)
     
     # Update param_user_all ready for export
     param_user_all = update_param_user_all(deterministic_dict, 
