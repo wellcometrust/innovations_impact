@@ -6,7 +6,7 @@ Lives touched, lives improved model
 
 @author: LaurencT
 """
-
+# Section 1 (see README for context)
 # Import all functions required
 import pandas as pd
 import numpy as np
@@ -25,6 +25,7 @@ import os
 os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data')
 directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
 
+# Section 2:
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
@@ -35,6 +36,7 @@ analysis_type = {'run_all' : False,
                  'overwrite_parameters' : True
                   } 
 
+# Section 3:
 # Importing a csv of saved paramters and setting the id to be the index
 param_user_all = pd.read_csv('LTLI_parameters.csv')
 param_user_all = param_user_all.set_index('id_code')
@@ -92,6 +94,8 @@ cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(cover
 coverage = coverage.rename(columns = cov_new_names)
 coverage.index = coverage['country']
 
+
+# Section 4
 # Declaring all the functions used in the script
 def check_analysis_type(analysis_type):
     """Checks the values in the analysis type dictionary to make sure they are
@@ -357,6 +361,7 @@ def clear_exceptions(param_user_all, param_dict):
         new_param_user_all.loc[code, 'exception_comment'] = '.'
     return(new_param_user_all)
 
+# Section 5:
 def index_last(string, char):
     """provides the index of the last character rather than the first
     Inputs:
@@ -502,6 +507,7 @@ def restructure_to_deterministic(analysis_type, param_user):
         param_dict[code] = param_df
     return param_dict
 
+# Section 6:
 def probabilistic_columns(param_user):
     """Based on user inputted parameters, takes the parameters and subsets the 
     relevant parameters for the probabilistic sensitivity analysis
@@ -675,6 +681,7 @@ def restructure_to_probabilistic(analysis_type, param_user):
                   for code in id_codes}
     return param_dict
 
+# Section 7:
 def get_relevant_burden(param_dict, burden_all):
     """Return a dict of burden data frames with the relevant conditions isolated
        Inputs:
@@ -973,6 +980,7 @@ def merge_cov_pop_and_burden(burden_dict, cov_pop_dict):
         data_dict[code] = scenario_dict
     return data_dict
 
+# Section 8:
 def create_target_population(cov_pop_burden_df, param_df, index):
     """Adds a new column to cov_pop_burden_df which is the target population
        Inputs:
@@ -996,7 +1004,7 @@ def create_target_population(cov_pop_burden_df, param_df, index):
     else:
         raise ValueError('The value of intervention_type for is not valid')
     return cov_pop_burden_df
-    
+   
 def apply_endemicity_threshold(cov_pop_burden_df, param_df, index):
     """Reduces coverage rates in df if burden is below the threshold
        Inputs:
@@ -1068,6 +1076,7 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
             cov_pop_burden_dict[code][index] = cov_pop_burden_df
     return cov_pop_burden_dict
 
+# Section 9:
 def update_exceptions(param_user_all, code, new_comment):
     """Updates exception_count and exception comment columns of param_user for
        appropriate codes
@@ -1118,7 +1127,8 @@ def apply_geography_exceptions(cov_pop_burden_dict, param_user_all):
             # As there is no expceptions relevant here
             pass
     return(cov_pop_burden_dict)
-        
+
+# Section 10:
 def calculate_lives_touched(cov_pop_burden_df):
     """Creates a column for lives touched by multiplying relevant columns
        Inputs:
@@ -1175,6 +1185,7 @@ def update_lives_improved(param_dict):
     param_dict = {k: calculate_lives_improved(v) for k, v in param_dict.items()}
     return param_dict
 
+# Section 11:
 def isolate_deterministic_rows(param_df):
     """Filter dfs by whether the index is text (signifying a deterministic scenario)
        Inputs:
@@ -1210,7 +1221,8 @@ def separate_param_dict(param_dict, analysis_type):
     deterministic_dict = {k: isolate_deterministic_rows(v) for k, v in param_dict.items()}
     probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) for k, v in param_dict.items()}
     return {'det': deterministic_dict, 'prob': probabilistic_dict}
- 
+
+# Section 12:
 def tornado_matplotlib(graph_data, base, directory, file_name, variable):
     """Creates a tornado diagram and saves it to a prespecified directory
        Inputs:
@@ -1528,6 +1540,7 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
         graph_data = bridge_graph_dict[code]
         bridge_plot(graph_data, directory, file_name)
 
+# Section 13:
 def graphs_to_slides(project_id):
     """
     """
@@ -1587,8 +1600,8 @@ def create_all_slides(param_dict):
     """
     for project_id in param_dict.keys():
         graphs_to_slides(project_id)
-    
-    
+
+# Section 14:    
 def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
     """Puts the new values for lives_touched and lives_improved (including the
        95% confidence interval upper and lower bounds)
@@ -1627,6 +1640,7 @@ def export_estimates(param_user_all, analysis_type):
     if analysis_type['overwrite_parameters']:
         param_user_all.to_csv('LTLI_parameters.csv')
 
+# Section 15:    
 # Code run sequentially
 def main():
     pass
