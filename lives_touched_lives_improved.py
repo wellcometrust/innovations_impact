@@ -28,7 +28,7 @@ directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/liv
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
-analysis_type = {'run_all' : True,
+analysis_type = {'run_all' : False,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
                  'num_trials' : 1000,
@@ -1381,7 +1381,7 @@ def bridge_plot(graph_data, directory, file_name):
                  bottom=graph_data['remainder'])
     connector = plt.plot(graph_data['remainder'], marker='o', color='k')
        
-    plt.ylabel('Number of people')
+    # plt.ylabel('Number of people')
     # plt.title('Number of people at different model stages')
     plt.xticks(ind, graph_data['stage'])
     plt.legend((p1[0], p2[0]), ('Remainder', 'Adjustment'))
