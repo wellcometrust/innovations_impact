@@ -25,10 +25,35 @@ import os
 os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data')
 directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
 
+# Probably want instead to always pass in paths to functions, and
+# to take the file or directory paths you need in as an argument in
+# __main__. I.e.
+#
+# from argparse import ArgumentParser
+#
+# parser = ArgumentParser(description=__doc__.strip())
+# parser.add_argument('some_important_path')
+#
+# if __name__ == '__main__':
+#     args = parser.parse_args()
+#     print('important path: %s' % args.some_important_path)
+#
+#     do_something(args.some_important_path)
+#
+# Or if not from command line, you could do:
+#
+#     data_dir = 'C:/Users/xxx'
+#     important_file = os.path.join(data_dir, 'wat.csv')
+#     do_something(important_file)
+
+
+
 # Section 2:
 # Import parameters csv and import datasets
 
 # A dictionary to determine the analysis type - update as prefered
+# Sometimes we make this a constant, e.g. DEFAULT_ANALYSIS_TYPE.
+# No need to do right away though.
 analysis_type = {'run_all' : False,
                  'run_deterministic' : True,
                  'run_probabilistic' : True,
@@ -36,6 +61,10 @@ analysis_type = {'run_all' : False,
                  'overwrite_parameters' : True
                   } 
 
+# This could a function
+#
+# def load_params(csv_path):
+#   """Loads params and returts them as a dict. """
 # Section 3:
 # Importing a csv of saved paramters and setting the id to be the index
 param_user_all = pd.read_csv('LTLI_parameters.csv')
@@ -43,6 +72,9 @@ param_user_all = param_user_all.set_index('id_code')
 param_user_dict = {code : param_user_all.loc[code] 
                    for code in param_user_all.index.tolist()}
 
+# def load_population(csv_path):
+#   """ Loads populations CSV and transforms for use in models. """
+#
 # Importing the relevant population data
 population = pd.read_csv("GBD_population_2016_reshaped.csv")
 
@@ -75,11 +107,15 @@ population = population.rename(columns = pop_new_names)
 # Reindex so country is the index
 population = population.set_index(keys = 'country', drop = True)
 
+# def load_burden(csv_path):
+#   """ ... """
 # Importing the relevant disease burden data
 burden_all = pd.read_csv('gbd_data_wide_2017.csv')
 
 burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
 
+# def load_coverage(csv_path):
+#   """ ... """
 # Importing the relevant coverage data
 coverage = pd.read_excel('C:/Users/laurenct/OneDrive - Wellcome Cloud/Health metrics/Vaccines data/Intervention penetration group placeholder.xlsm', 
                          sheet_name = 'Penetration assumptions')
@@ -93,6 +129,16 @@ coverage = coverage[cov_new_columns]
 cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
 coverage = coverage.rename(columns = cov_new_names)
 coverage.index = coverage['country']
+
+
+# All of these sections above could go in their own file, "model_inputs.py", and
+# be imported.
+#
+#   import model_inputs
+#
+#   model_inputs.load_params(params_path)
+#   model_inputs.load_population(...)
+#   ...
 
 
 # Section 4
@@ -361,7 +407,12 @@ def clear_exceptions(param_user_all, param_dict):
         new_param_user_all.loc[code, 'exception_comment'] = '.'
     return(new_param_user_all)
 
+# All of these functions above may go in, say, "input_validation.py"
+# especially since some of them are only called by check_inputs()
+
+
 # Section 5:
+# Is this the same as string.rindex(char)?
 def index_last(string, char):
     """provides the index of the last character rather than the first
     Inputs:
@@ -400,11 +451,18 @@ def deterministic_lists(analysis_type, param_user):
        be called for each of them
        Inputs:
            analysis_type - the dictionary summarising what type of analysis is 
-           being undertaken, must contain the key 'run_deterministic'
+               being undertaken, must contain the key 'run_deterministic'
            param_user - dict - keys: id_codes, values: series of parameters
        Returns:
            A dict - keys: scenario names, values - the set of parameters to
-           be called for the corresponding scenario
+           be called for the corresponding scenario. Example:
+
+            {
+                'scenario_a': {
+                    ...,
+                },
+                ...
+            }
     """
     # Create scenario names based on parameter names
     # This takes a random series from the dictionary's values to get the indexes
@@ -473,6 +531,10 @@ def scenario_param(param_user, param_list, id_code):
     # Return the relevant parameters with standardised names
     return param 
 
+# Better name?
+#
+# def get_deterministic_params(analysis_type, param_user)
+#   ...
 def restructure_to_deterministic(analysis_type, param_user):
     """Turns param_user dict into a set of parameters for each of the 
        deterministic analyses
@@ -508,6 +570,7 @@ def restructure_to_deterministic(analysis_type, param_user):
     return param_dict
 
 # Section 6:
+# def get_probabilisitic_column_names(param_user)
 def probabilistic_columns(param_user):
     """Based on user inputted parameters, takes the parameters and subsets the 
     relevant parameters for the probabilistic sensitivity analysis
@@ -598,7 +661,10 @@ def gamma_moments_burden(mean, sd):
         shape = mean/scale
         return {'scale':scale, 'shape':shape}
 
+# These momements functions above could go in their own module as well.
 
+
+# This function feels a bit big.
 def create_prob_df(param_prob, id_code, new_columns, num_trials):
     """Simulate new columns of paramters probabilistically based on assumed 
        means and sds, these columns are then added the data frames
@@ -622,6 +688,12 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
     prob_df = prob_df.T
     # Generate new columns based on probability distributions
     for column in new_columns:
+        # You'd probably shorten the function by pulling some of
+        # the logic here out into its own function that you call.
+        #
+        # new_column = create_prob_column(...)
+        # prob_df = pd.concat(...)
+        # ...
         mean = float(param_example[column+'_mean'])
         sd = float(param_example[column+'_SD'])
         if sd == 0:
@@ -658,6 +730,7 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
         prob_df = prob_df.drop(columns_to_drop, axis =1)
     return prob_df
     
+# as above, def get_probabilisitic_params(..)
 def restructure_to_probabilistic(analysis_type, param_user):
     """Turns param_user dict into a set of parameters for each of the probabilistic
        sensitivity analyses
@@ -726,6 +799,18 @@ def select_columns_burden(burden_df, index):
         try:
             int(index)
             #~ changed from normal to gamma
+            # This section could probably use more comments &
+            # newlines / indentation. Rememeber you can break lines
+            # inside parentheses and also carry over with \
+            #
+            #
+            # sd = (
+            #   new_burden_df[root + '_mean'] -
+            #   new_burden_df[root + '_lower']
+            # )/2
+            # mean = ...
+            # (adding newlines as improves legibility, or comments)
+            # prop_lower_mean = ...
             mean = new_burden_df[root + '_mean']
             sd = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/2
             prop_lower_mean = (new_burden_df[root + '_mean']/new_burden_df[root + '_mean']).mean()
@@ -736,6 +821,8 @@ def select_columns_burden(burden_df, index):
             new_burden_df[root + '_mean'] = new_burden_df[root + '_mean'] * norm.rvs(1, (1-prop_lower_mean)/4)
             new_burden_df[root + '_mean'] = np.where(new_burden_df[root + '_mean'] <0, 
                                                      0, new_burden_df[root + '_mean'])
+        # If appropriate, this except block may belong immediately after
+        # int(index) instead of later.
         except ValueError:
             if index == 'burden_lower':
                 new_burden_df[root + '_mean'] = new_burden_df[root + '_lower']
@@ -776,6 +863,15 @@ def strain_adjust_burden_df(burden_df, param_df, index):
     # Adjust the df for the substrain prop for each disease
     for column in column_list:
         for disease in disease_dict.keys():
+            # again, indentation would help. I tend to indent only
+            # 4-spaces instead on 2nd line in cases like this.
+            # Note pulling a variable out as well for better legibility.
+            #
+            # disease_df = param_df.loc[index, disease_dict[disease]]
+            # new_burden_df[column] = np.where(
+            #     new_burden_df['cause'] == param_df.loc[index, disease],
+            #     new_burden_df[column] * disease_df,
+            #     new_burden_df[column])
             new_burden_df[column] = np.where(new_burden_df['cause'] == param_df.loc[index, disease], 
                                          new_burden_df[column]*param_df.loc[index, disease_dict[disease]], 
                                          new_burden_df[column])
@@ -1637,11 +1733,14 @@ def export_estimates(param_user_all, analysis_type):
     back_up_path = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/LTLI_parameters_python_'+data_str+'.csv'
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
+    # I'd probably just never over-write, and instead always write to a
+    # fresh output. But, you must have your reasons.
     if analysis_type['overwrite_parameters']:
         param_user_all.to_csv('LTLI_parameters.csv')
 
 # Section 15:    
 # Code run sequentially
+# Not sure what this function does or if it's needed.
 def main():
     pass
 
