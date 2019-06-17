@@ -22,7 +22,10 @@ import sys, os
 # Import other modules written for LTLI
 sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
 import model_inputs
-
+import input_check
+from probability_distribution_moments import beta_moments
+from probability_distribution_moments import gamma_moments
+from probability_distribution_moments import gamma_moments_burden
 
 
 # Set up directories, file names and analysis type
@@ -59,6 +62,7 @@ analysis_type = {'run_all' : False, # True or False
 def clear_exceptions(param_user_all, param_dict):
     """
     """
+    # TODO render obsolete as don't write over parameters csv
     new_param_user_all = param_user_all.copy()
     for code in param_dict.keys():
         new_param_user_all.loc[code, 'exception_count'] = 0
@@ -66,23 +70,6 @@ def clear_exceptions(param_user_all, param_dict):
     return(new_param_user_all)
 
 # Section 5:
-def index_last(string, char):
-    """provides the index of the last character rather than the first
-    Inputs:
-        string - any string
-        char - a character - a string of length 1
-    Returns:
-        the index of the final appearance of char, 
-        throws an error if char not in string to match behaviour of  str.index() 
-    """
-    latest_char = -1
-    for i in range(len(string)):
-        if string[i] == char:
-            latest_char = i
-    if latest_char == -1:
-        raise ValueError(" substring not found")
-    return latest_char
-
 def lists_to_dict(list_keys, list_values):
     """two ordered lists to a dict where list_keys are the keys and list_values 
        are the values
@@ -104,11 +91,18 @@ def deterministic_lists(analysis_type, param_user):
        be called for each of them
        Inputs:
            analysis_type - the dictionary summarising what type of analysis is 
-           being undertaken, must contain the key 'run_deterministic'
+               being undertaken, must contain the key 'run_deterministic'
            param_user - dict - keys: id_codes, values: series of parameters
        Returns:
-           A dict - keys: scenario names, values - the set of parameters to
-           be called for the corresponding scenario
+           A dict - keys: scenario names, values - the list of parameters to
+               be called for the corresponding scenario. Example:
+               {'base': [burden_mean,
+                         ...,
+                         coverage_mean],
+                '....': [...],
+                'burden_lower': [burden_lower,
+                                 ...,
+                                 coverage_mean]}
     """
     # Create scenario names based on parameter names
     # This takes a random series from the dictionary's values to get the indexes
@@ -136,13 +130,13 @@ def deterministic_lists(analysis_type, param_user):
         # Burden scenarios influence strain proportion, will use GBD ranges - 
         # not assumed ones so no adjustment factor for burden estimates yet
         elif re.search('burden', scenario):
-            scenario_type = scenario[index_last(scenario, "_")+1:]
+            scenario_type = scenario[scenario.rindex('_')+1:]
             new_columns = [re.sub('mean', scenario_type, column) 
                            if re.search('disease.*prop', column) else column 
                            for column in columns_to_select]
         # All others replace the column index for mean with upper or lower
         else:
-            scenario_focus = scenario[:index_last(scenario, '_')] 
+            scenario_focus = scenario[:scenario.rindex('_')] 
             column_name_to_replace = scenario_focus + '_mean'
             new_columns = [scenario 
                            if column == column_name_to_replace 
@@ -177,7 +171,7 @@ def scenario_param(param_user, param_list, id_code):
     # Return the relevant parameters with standardised names
     return param 
 
-def restructure_to_deterministic(analysis_type, param_user):
+def get_deterministic_params(analysis_type, param_user):
     """Turns param_user dict into a set of parameters for each of the 
        deterministic analyses
        Inputs:
@@ -205,14 +199,15 @@ def restructure_to_deterministic(analysis_type, param_user):
             param = param.rename(scenario)
             scenario_params.append(param)
         # Concatenate the series and transpose
-        param_df = pd.concat(scenario_params, axis = 1, join_axes=[scenario_params[0].index])
+        param_df = pd.concat(scenario_params, axis = 1, 
+                             join_axes=[scenario_params[0].index])
         param_df = param_df.transpose()
         # populate the dictionary
         param_dict[code] = param_df
     return param_dict
 
 # Section 6:
-def probabilistic_columns(param_user):
+def get_probabilistic_column_names(param_user):
     """Based on user inputted parameters, takes the parameters and subsets the 
     relevant parameters for the probabilistic sensitivity analysis
     Inputs:
@@ -240,68 +235,43 @@ def columns_to_add(column_names):
     new_columns = [re.sub('_mean', '', val) for val in new_columns]
     return new_columns
 
-def beta_moments(mean, sd):
-    """Calculates the moments of a beta distribution based on mean and sd
-       as they are more intuitive inputs
-       More info on beta: https://en.wikipedia.org/wiki/Beta_distribution
+def simulate_column(mean, sd, column, num_trials):
+    """Simulates num_trials values of a parameter based on the mean, sd and column type
        Inputs:
-           mean - a float - the chosen mean of the distribution
-           sd - a float - the chosen standard deviation of the distribution
+           mean - float - the base case value of that parameter
+           sd - float - the standard deviation of that parameter
+           column - str - the name of column to be  simulated
+           num_trials - int - the num of trials to be simulated
        Returns:
-           dict - keys: alpha and beta, values of corresponding moments
+           a numpy array of simulated values
     """
-    if (sd**2) >= (mean*(1 - mean)):
-        raise ValueError('Variance (sd^2) must be less than (mean*(1-mean))')
+    if sd == 0:
+        data = np.array([mean for i in range(1,num_trials+1)])
+    # Use normal for things that vary around 1, inflation factor will need
+    # changing probaby #~
+    elif column in ['population', 'inflation_factor', 'share',
+                    'coverage', 'prob_cover']:    
+        data = norm.rvs(size = num_trials, loc = mean, scale = sd)
+    # Use beta distribution for all paramters that are a proportion
+    elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
+                    'intervention_cut', 'efficacy']:
+        # Disease prop may not be a proportion - may inflate the naive population
+        if (re.search('disease_[1-3]_prop', column) and mean>1):
+            data = norm.rvs(size = num_trials, loc = mean, scale = sd)
+        else:
+            data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
+                        b = beta_moments(mean, sd)['beta'], 
+                        size = num_trials)
+    # Use gamma for parameters that are non-negative and have a right skew
+    elif column in ['endem_thresh']:
+        data = gamma.rvs(a = gamma_moments(mean, sd)['shape'], 
+                         scale = gamma_moments(mean, sd)['scale'], 
+                         size = num_trials)
+    # If a new parameter has been added will have to add it to one of the lists
+    # above or this ValueError will be thrown every time
     else:
-        term = mean*(1 - mean)/(sd**2) - 1
-        alpha = mean*term
-        beta = (1 - mean)*term
-        return {'alpha': alpha, 'beta': beta}
-    
-def gamma_moments(mean, sd):
-    """Calculates the moments of a gamma distribution based on mean and sd
-       as they are more intuitive inputs
-       More info on gamma: https://en.wikipedia.org/wiki/Gamma_distribution
-       Inputs:
-           mean - a float - the chosen mean of the distribution
-           sd - a float - the chosen standard deviation of the distribution
-       Returns:
-           dict - keys: shape and scale, values of corresponding moments
-    """
-    if mean < 0:
-        raise ValueError('The mean must be above 0')
-    else:
-        scale = sd**2/mean
-        shape = mean/scale
-        return {'scale':scale, 'shape':shape}
-
-def gamma_moments_burden(mean, sd):
-    """Calculates the moments of a gamma distribution based on mean and sd
-       as they are more intuitive inputs
-       More info on gamma: https://en.wikipedia.org/wiki/Gamma_distribution
-       Inputs:
-           mean - a float - the chosen mean of the distribution
-           sd - a float - the chosen standard deviation of the distribution
-       Returns:
-           dict - keys: shape and scale, values of corresponding moments
-    """
-    if mean < 0:
-        raise ValueError('The mean must be above 0')
-    # To deal with case where burden is 0 in mean, lower and upper to ensure 
-    # that it stays very close to 0, which still allowing the burden simulation
-    # to run
-    elif mean == 0:
-        return {'scale':0, 'shape':100000}
-    elif sd == 0:
-        sd = mean/10
-        scale = sd**2/mean
-        shape = mean/scale
-        return {'scale':scale, 'shape':shape}
-    else:
-        scale = sd**2/mean
-        shape = mean/scale
-        return {'scale':scale, 'shape':shape}
-
+        raise ValueError(column, ' is an invalid column name')
+    return data
 
 def create_prob_df(param_prob, id_code, new_columns, num_trials):
     """Simulate new columns of paramters probabilistically based on assumed 
@@ -328,32 +298,7 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
     for column in new_columns:
         mean = float(param_example[column+'_mean'])
         sd = float(param_example[column+'_SD'])
-        if sd == 0:
-            data = np.array([mean for i in range(1,num_trials+1)])
-        # Use normal for things that vary around 1, inflation factor will need
-        # changing probaby #~
-        elif column in ['population', 'inflation_factor', 'share',
-                        'coverage', 'prob_cover']:    
-            data = norm.rvs(size = num_trials, loc = mean, scale = sd)
-        # Use beta distribution for all paramters that are a proportion
-        elif column in ['disease_1_prop', 'disease_2_prop', 'disease_3_prop',
-                        'intervention_cut', 'efficacy']:
-            # Disease prop may not be a proportion - may inflate the naive population
-            if (re.search('disease_[1-3]_prop', column) and mean>1):
-                data = norm.rvs(size = num_trials, loc = mean, scale = sd)
-            else:
-                data = beta.rvs(a = beta_moments(mean, sd)['alpha'], 
-                            b = beta_moments(mean, sd)['beta'], 
-                            size = num_trials)
-        # Use gamma for parameters that are non-negative and have a right skew
-        elif column in ['endem_thresh']:
-            data = gamma.rvs(a = gamma_moments(mean, sd)['shape'], 
-                             scale = gamma_moments(mean, sd)['scale'], 
-                             size = num_trials)
-        # If a new parameter has been added will have to add it to one of the lists
-        # above or this ValueError will be thrown every time
-        else:
-            raise ValueError(column, ' is an invalid column name')
+        data = simulate_column(mean, sd, column, num_trials)
         # Turn the relevant new data into a series (which becomes a column)
         new_column = pd.Series(data, index = range(1, num_trials + 1), name = column)
         prob_df = pd.concat([prob_df, new_column.T], axis = 1, sort = False)
@@ -362,7 +307,7 @@ def create_prob_df(param_prob, id_code, new_columns, num_trials):
         prob_df = prob_df.drop(columns_to_drop, axis =1)
     return prob_df
     
-def restructure_to_probabilistic(analysis_type, param_user):
+def get_probabilistic_params(analysis_type, param_user):
     """Turns param_user dict into a set of parameters for each of the probabilistic
        sensitivity analyses
        Inputs:
@@ -376,7 +321,7 @@ def restructure_to_probabilistic(analysis_type, param_user):
     """
     # Remove parameters related to upper and lower bounds, focus on means and sds
     num_trials = analysis_type['num_trials']
-    column_names = probabilistic_columns(param_user)
+    column_names = get_probabilistic_column_names(param_user)
     new_columns = columns_to_add(column_names)
     param_prob = {k:v[column_names] for k, v in param_user.items()}
     # Generate the relevant id_codes
@@ -431,13 +376,19 @@ def select_columns_burden(burden_df, index):
             int(index)
             #~ changed from normal to gamma
             mean = new_burden_df[root + '_mean']
-            sd = (new_burden_df[root + '_mean']-new_burden_df[root + '_lower'])/2
-            prop_lower_mean = (new_burden_df[root + '_mean']/new_burden_df[root + '_mean']).mean()
-            gamma_vals = pd.DataFrame([gamma_moments_burden(mean_val, sd_val) for mean_val, sd_val in zip(mean, sd)])
+            sd = (
+                    new_burden_df[root + '_mean'] -
+                    new_burden_df[root + '_lower']
+                 )/2
+            prop_lower_mean = (new_burden_df[root + '_mean'] / 
+                               new_burden_df[root + '_mean']).mean()
+            gamma_vals = pd.DataFrame([gamma_moments_burden(mean_val, sd_val) 
+                                       for mean_val, sd_val in zip(mean, sd)])
             new_burden_df[root + '_mean'] = gamma.rvs(a = gamma_vals['shape'], 
                                                       scale = gamma_vals['scale'], 
                                                       size = len(gamma_vals['shape']))
-            new_burden_df[root + '_mean'] = new_burden_df[root + '_mean'] * norm.rvs(1, (1-prop_lower_mean)/4)
+            new_burden_df[root + '_mean'] = new_burden_df[root + '_mean'] * \
+                                            norm.rvs(1, (1-prop_lower_mean)/4)
             new_burden_df[root + '_mean'] = np.where(new_burden_df[root + '_mean'] <0, 
                                                      0, new_burden_df[root + '_mean'])
         except ValueError:
@@ -447,10 +398,12 @@ def select_columns_burden(burden_df, index):
                 new_burden_df[root + '_mean'] = new_burden_df[root + '_upper']
         
     # Remove upper and lower columns as the relevant column is now the mean
-    relevant_columns = [column for column in list(new_burden_df) if not re.search('upper|lower', column)]
+    relevant_columns = [column for column in list(new_burden_df) 
+                        if not re.search('upper|lower', column)]
     new_burden_df = new_burden_df[relevant_columns]
     # Create new column name mapping
-    new_column_names_dict = {column: re.sub('_mean', '', column) for column in relevant_columns}  
+    new_column_names_dict = {column: re.sub('_mean', '', column) 
+                             for column in relevant_columns}  
     # Rename columns
     new_burden_df = new_burden_df.rename(columns = new_column_names_dict)
     return new_burden_df
@@ -474,15 +427,17 @@ def strain_adjust_burden_df(burden_df, param_df, index):
     # Copy the burden_df to avoid side effects
     new_burden_df = burden_df.copy()
     # Create a list of burden columns because they are the form 'measure_metric'
-    column_list = [column for column in list(new_burden_df) if re.search('number|rate', column)]
+    column_list = [column for column in list(new_burden_df) 
+                   if re.search('number|rate', column)]
     # Create a mapping of the disease and proportion
     disease_dict = {k: k+"_prop" for k in ['disease_1', 'disease_2', 'disease_3']}
     # Adjust the df for the substrain prop for each disease
     for column in column_list:
         for disease in disease_dict.keys():
-            new_burden_df[column] = np.where(new_burden_df['cause'] == param_df.loc[index, disease], 
-                                         new_burden_df[column]*param_df.loc[index, disease_dict[disease]], 
-                                         new_burden_df[column])
+            new_burden_df[column] = np.where(
+                    new_burden_df['cause'] == param_df.loc[index, disease], 
+                    new_burden_df[column]*param_df.loc[index, disease_dict[disease]], 
+                    new_burden_df[column])
     return new_burden_df
 
 def aggregate_burden_df(burden_df):
@@ -503,7 +458,9 @@ def aggregate_burden_df(burden_df):
     summed_burden_df = new_burden_df.groupby(['country', 'age']).sum()
     # Turn the indexes back into columns in a df
     index_list = summed_burden_df.index.tolist()
-    summed_df = pd.DataFrame(index_list, columns = ['country', 'age'], index = index_list)
+    summed_df = pd.DataFrame(index_list, 
+                             columns = ['country', 'age'], 
+                             index = index_list)
     # Add the new cause name to the df
     summed_df['cause'] = new_cause_name
     # Merge the burden with the country, age group, and cause columns
@@ -539,7 +496,9 @@ def adjust_burden_dict(burden_dict, param_dict):
         # for the trial
         for index in param_df.index.tolist():
             burden_df_index = select_columns_burden(burden_df, index)
-            burden_df_index = strain_adjust_burden_df(burden_df_index, param_df, index)
+            burden_df_index = strain_adjust_burden_df(burden_df_index, 
+                                                      param_df, 
+                                                      index)
             burden_df_index = aggregate_burden_df(burden_df_index)
             burden_scenarios_dict[index] = burden_df_index            
         # Add the new dictionary for the trials to the outer dictionary
@@ -589,7 +548,9 @@ def create_coverage_population_dict(coverage, population, param_dict):
         else:
             raise ValueError('The value of intervention_type for '+code+' is not valid')
         # Create new column names and rename
-        new_column_names = {column: re.sub('vaccine_|diagnostic_|therapeutic_mental_health_|therapeutic_', '', column) 
+        new_column_names = {column: re.sub(('vaccine_|diagnostic_|'
+                                           'therapeutic_mental_health_|therapeutic_'), 
+                                           '', column) 
                             for column in list(new_coverage)}
         new_coverage = new_coverage.rename(columns = new_column_names)
         # Merge the coverage and population data
@@ -611,19 +572,25 @@ def adjust_cov_pop_df(cov_pop_df, index, param_df):
     """
     new_cov_pop_df = cov_pop_df.copy()
     # Adjust population columns by the population assumption for this scenario
-    pop_columns = [column for column in list(new_cov_pop_df) if re.search('pop', column)]
+    pop_columns = [column for column in list(new_cov_pop_df) 
+                   if re.search('pop', column)]
     for column in pop_columns:
-        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'population']
+        new_cov_pop_df[column] = (new_cov_pop_df[column] *
+                                  param_df.loc[index, 'population'])
     # Adjust coverage columns by the coverage assumption for this scenario
-    cov_columns = [column for column in list(new_cov_pop_df) if re.search('coverage', column)]
+    cov_columns = [column for column in list(new_cov_pop_df) 
+                   if re.search('coverage', column)]
     for column in cov_columns:
-        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'coverage']
+        new_cov_pop_df[column] = (new_cov_pop_df[column] * 
+                                  param_df.loc[index, 'coverage'])
         new_cov_pop_df[column] = np.where(new_cov_pop_df[column] > 0.95, 
                                           0.95, new_cov_pop_df[column])
     # Adjust prob_cover columns by the coverage assumption for this scenario
-    cov_columns = [column for column in list(new_cov_pop_df) if re.search('prob_cover', column)]
+    cov_columns = [column for column in list(new_cov_pop_df) 
+                   if re.search('prob_cover', column)]
     for column in cov_columns:
-        new_cov_pop_df[column] = new_cov_pop_df[column]*param_df.loc[index, 'prob_cover']
+        new_cov_pop_df[column] = (new_cov_pop_df[column] * 
+                                  param_df.loc[index, 'prob_cover'])
         new_cov_pop_df[column] = np.where(new_cov_pop_df[column] > 0.95, 
                                           0.95, new_cov_pop_df[column]) 
     return new_cov_pop_df  
@@ -726,9 +693,11 @@ def apply_endemicity_threshold(cov_pop_burden_df, param_df, index):
     endem_thresh = param_df.loc[index, 'endem_thresh']
     coverage_below_threshold = param_df.loc[index, 'coverage_below_threshold']
     # Applies the endemicity threshold
-    new_cov_pop_burden_df['coverage'] = np.where(new_cov_pop_burden_df[endem_thresh_column] < endem_thresh,
-                     coverage_below_threshold,
-                     new_cov_pop_burden_df['coverage'])
+    new_cov_pop_burden_df['coverage'] = (
+            np.where(new_cov_pop_burden_df[endem_thresh_column] < endem_thresh,
+            coverage_below_threshold,
+            new_cov_pop_burden_df['coverage'])
+                                        )
     return new_cov_pop_burden_df
 
 def apply_diagnostic_inflation(cov_pop_burden_df, param_df, index):
@@ -741,7 +710,8 @@ def apply_diagnostic_inflation(cov_pop_burden_df, param_df, index):
            a df with inflated target_pop column
     """
     new_cov_pop_burden_df = cov_pop_burden_df.copy()
-    new_cov_pop_burden_df['target_pop'] = new_cov_pop_burden_df['target_pop']*param_df.loc[index, 'inflation_factor']
+    new_cov_pop_burden_df['target_pop'] = (new_cov_pop_burden_df['target_pop'] * 
+                                           param_df.loc[index, 'inflation_factor'])
     return new_cov_pop_burden_df
 
 def apply_intervention_cut(cov_pop_burden_df, param_df, index):
@@ -753,7 +723,8 @@ def apply_intervention_cut(cov_pop_burden_df, param_df, index):
        Returns:
            a df with inflated target_pop column
     """
-    cov_pop_burden_df['prob_cover'] = cov_pop_burden_df['prob_cover']*param_df.loc[index, 'intervention_cut']
+    cov_pop_burden_df['prob_cover'] = (cov_pop_burden_df['prob_cover'] * 
+                                       param_df.loc[index, 'intervention_cut'])
     return cov_pop_burden_df
 
 def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
@@ -771,12 +742,20 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
         param_df = param_dict[code]
         for index in param_df.index.tolist():
             cov_pop_burden_df = cov_pop_burden_dict[code][index].copy()
-            cov_pop_burden_df = create_target_population(cov_pop_burden_df, param_df, index)
+            cov_pop_burden_df = create_target_population(cov_pop_burden_df, 
+                                                         param_df, 
+                                                         index)
             if param_df.loc[index, 'intervention_type'] == 'Diagnostic':
-                cov_pop_burden_df = apply_diagnostic_inflation(cov_pop_burden_df, param_df, index)
+                cov_pop_burden_df = apply_diagnostic_inflation(cov_pop_burden_df, 
+                                                               param_df, 
+                                                               index)
             elif param_df.loc[index, 'intervention_type'] == 'Vaccine':
-                cov_pop_burden_df = apply_endemicity_threshold(cov_pop_burden_df, param_df, index)
-            cov_pop_burden_df = apply_intervention_cut(cov_pop_burden_df, param_df, index)
+                cov_pop_burden_df = apply_endemicity_threshold(cov_pop_burden_df, 
+                                                               param_df, 
+                                                               index)
+            cov_pop_burden_df = apply_intervention_cut(cov_pop_burden_df, 
+                                                       param_df, 
+                                                       index)
             cov_pop_burden_dict[code][index] = cov_pop_burden_df
     return cov_pop_burden_dict
 
@@ -812,9 +791,11 @@ def apply_geography_exceptions(cov_pop_burden_dict, param_user_all):
             super_regions = ['South Asia']
             for index in cov_pop_burden_trials.keys():
                 cov_pop_burden_df = cov_pop_burden_trials[index]
-                cov_pop_burden_df['target_pop'] = np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
-                                                           cov_pop_burden_df['target_pop'],
-                                                           0)
+                cov_pop_burden_df['target_pop'] = (
+                        np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
+                                 cov_pop_burden_df['target_pop'],
+                                 0)
+                                                  )
             new_comment = 'Only allowed for coverage in South Asia as in the TPP'
             update_exceptions(param_user_all, code, new_comment)
         elif code == '2123460002C':
@@ -822,9 +803,11 @@ def apply_geography_exceptions(cov_pop_burden_dict, param_user_all):
             super_regions = ["Sub-Saharan Africa"]
             for index in cov_pop_burden_trials.keys():
                 cov_pop_burden_df = cov_pop_burden_trials[index]
-                cov_pop_burden_df['target_pop'] = np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
-                                                           cov_pop_burden_df['target_pop'],
-                                                           0)
+                cov_pop_burden_df['target_pop'] = (
+                        np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
+                                 cov_pop_burden_df['target_pop'],
+                                 0)
+                                                  )
             new_comment = 'Only allowed for coverage in Africa as in the TPP.'
             update_exceptions(param_user_all, code, new_comment)
         else:
@@ -860,7 +843,6 @@ def update_lives_touched(cov_pop_burden_dict, param_dict):
     for code in param_dict.keys():
         param_df = param_dict[code]
         for index in param_df.index.tolist():
-            #~haven't extracted the estimated lives_touched in the cov_pop_burden_dict, is it necessary?
             cov_pop_burden_df = cov_pop_burden_dict[code][index].copy()
             cov_pop_burden_df = calculate_lives_touched(cov_pop_burden_df)
             lives_touched = cov_pop_burden_df['lives_touched'].sum()
@@ -922,8 +904,10 @@ def separate_param_dict(param_dict, analysis_type):
        Returns:
            a dict of two dicts 
     """
-    deterministic_dict = {k: isolate_deterministic_rows(v) for k, v in param_dict.items()}
-    probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) for k, v in param_dict.items()}
+    deterministic_dict = {k: isolate_deterministic_rows(v) 
+                          for k, v in param_dict.items()}
+    probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) 
+                          for k, v in param_dict.items()}
     return {'det': deterministic_dict, 'prob': probabilistic_dict}
 
 # Section 12:
@@ -1156,16 +1140,30 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
         burden_df_unadjusted = burden_dict_unadjusted[key]        
         cov_pop_burden_df = base_cov_pop_burden_dict[key]
         # Create these columns because they are the same across modalities
-        cov_pop_burden_df['naive_incidence_number'] = aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
-        cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['target_pop']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']/param_user_dict[key]['intervention_cut_mean']
-        cov_pop_burden_df['lives_touched'] = cov_pop_burden_df['lives_touched_base']*param_user_dict[key]['intervention_cut_mean']
-        cov_pop_burden_df['lives_improved'] = cov_pop_burden_df['lives_touched']*param_user_dict[key]['efficacy_mean']
+        cov_pop_burden_df['naive_incidence_number'] = (
+                aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
+                                                      )
+        cov_pop_burden_df['lives_touched_base'] = (
+                cov_pop_burden_df['target_pop'] * 
+                cov_pop_burden_df['prob_cover'] * 
+                cov_pop_burden_df['coverage'] / 
+                param_user_dict[key]['intervention_cut_mean'])
+        cov_pop_burden_df['lives_touched'] = (
+                cov_pop_burden_df['lives_touched_base'] * 
+                param_user_dict[key]['intervention_cut_mean'])
+        cov_pop_burden_df['lives_improved'] = (
+                cov_pop_burden_df['lives_touched'] * 
+                param_user_dict[key]['efficacy_mean'])
         if intervention_type == 'Vaccine':
             # Create vaccine specific columns
             cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
                                                          cov_pop_burden_df['target_pop'],
                                                          0)
-            cov_pop_burden_df['lives_touched_base'] = cov_pop_burden_df['birth_cohort_endem']*cov_pop_burden_df['prob_cover']*cov_pop_burden_df['coverage']/param_user_dict[key]['intervention_cut_mean']
+            cov_pop_burden_df['lives_touched_base'] = (
+                    cov_pop_burden_df['birth_cohort_endem']
+                    *cov_pop_burden_df['prob_cover'] * 
+                    cov_pop_burden_df['coverage'] / 
+                    param_user_dict[key]['intervention_cut_mean'])
             # Aggregate the columns to make a relevant for the graph
             stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
                       'Expected lives touched\nfor a base vaccine\nin endemic countries',
@@ -1257,35 +1255,49 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     bridge_box = main_slide.shapes[5]
     bridge_top = bridge_box.top-10000
     bridge_left = bridge_box.left-10000
-    main_slide.shapes.add_picture(bridge_path, top = bridge_top, left = bridge_left)
+    main_slide.shapes.add_picture(bridge_path, 
+                                  top = bridge_top, 
+                                  left = bridge_left)
     
     lt_appendix_slide = prs.slides[1]
     
-    lt_tornado_path = os.path.join(graph_dir, project_id + '_deterministic_lives_touched.png')
+    lt_tornado_path = os.path.join(graph_dir, 
+                                   project_id + '_deterministic_lives_touched.png')
     lt_tornado_box = lt_appendix_slide.shapes[5]
     lt_tornado_top = lt_tornado_box.top
     lt_tornado_left = lt_tornado_box.left-10000
-    lt_appendix_slide.shapes.add_picture(lt_tornado_path, top = lt_tornado_top, left = lt_tornado_left)
+    lt_appendix_slide.shapes.add_picture(lt_tornado_path, 
+                                         top = lt_tornado_top, 
+                                         left = lt_tornado_left)
     
-    lt_histogram_path = os.path.join(graph_dir, project_id + '_probabilistic_lives_touched.png')
+    lt_histogram_path = os.path.join(graph_dir, 
+                                     project_id + '_probabilistic_lives_touched.png')
     lt_histogram_box = lt_appendix_slide.shapes[6]
     lt_histogram_top = lt_histogram_box.top
     lt_histogram_left = lt_histogram_box.left
-    lt_appendix_slide.shapes.add_picture(lt_histogram_path, top = lt_histogram_top, left = lt_histogram_left)
+    lt_appendix_slide.shapes.add_picture(lt_histogram_path, 
+                                         top = lt_histogram_top, 
+                                         left = lt_histogram_left)
     
     li_appendix_slide = prs.slides[2]
     
-    li_tornado_path = os.path.join(graph_dir, project_id + '_deterministic_lives_improved.png')
+    li_tornado_path = os.path.join(graph_dir, 
+                                   project_id + '_deterministic_lives_improved.png')
     li_tornado_box = li_appendix_slide.shapes[5]
     li_tornado_top = li_tornado_box.top
     li_tornado_left = li_tornado_box.left-10000
-    li_appendix_slide.shapes.add_picture(li_tornado_path, top = li_tornado_top, left = li_tornado_left)
+    li_appendix_slide.shapes.add_picture(li_tornado_path, 
+                                         top = li_tornado_top, 
+                                         left = li_tornado_left)
     
-    li_histogram_path = os.path.join(graph_dir, project_id + '_probabilistic_lives_improved.png')
+    li_histogram_path = os.path.join(graph_dir, 
+                                     project_id + '_probabilistic_lives_improved.png')
     li_histogram_box = li_appendix_slide.shapes[6]
     li_histogram_top = li_histogram_box.top-5000
     li_histogram_left = li_histogram_box.left
-    li_appendix_slide.shapes.add_picture(li_histogram_path, top = li_histogram_top, left = li_histogram_left)
+    li_appendix_slide.shapes.add_picture(li_histogram_path, 
+                                         top = li_histogram_top, 
+                                         left = li_histogram_left)
     
     new_dir = os.path.join(export_location, project_id)
     
@@ -1294,7 +1306,8 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     except FileExistsError:
         pass
     
-    upload_path = os.path.join(new_dir+'/', project_id + '_mm_impact_charts.pptx')
+    upload_path = os.path.join(new_dir+'/', 
+                               project_id + '_mm_impact_charts.pptx')
     prs.save(upload_path)
     
 
@@ -1354,10 +1367,10 @@ def main():
 if __name__ == "__main__":
    
     # Loads in the relevant model parameters
-    param_user_all = load_params(param_csv_name, data_dir)
+    param_user_all = model_inputs.load_params(param_csv_name, data_dir)
     
     # Transforms the parameters to a dict for future transformation
-    param_user_dict = create_param_dict(param_user_all)
+    param_user_dict = model_inputs.create_param_dict(param_user_all)
     
     population = model_inputs.load_population_data(population_csv_name, data_dir) 
     
@@ -1368,18 +1381,23 @@ if __name__ == "__main__":
                                                       data_dir)
 
     # Write in a parameter checking function as the first function
-    check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
+    input_check.check_inputs(analysis_type, 
+                             param_user_all, 
+                             population, 
+                             coverage, 
+                             burden_all)
     
     # Vary the parameter dict depending on whether you are running all the analysis
     # or just a subset
-    param_user = check_run_all(analysis_type, param_user_dict)
+    param_user = input_check.check_run_all(analysis_type, 
+                                           param_user_dict)
     
     # Clear any previous exception comments for projects that are being modelled
     param_user_all = clear_exceptions(param_user_all, param_user)
     
     # Create different versions of the parameters ready for sensitivity analyses
-    deterministic_dict = restructure_to_deterministic(analysis_type, param_user)
-    probabilistic_dict = restructure_to_probabilistic(analysis_type, param_user)
+    deterministic_dict = get_deterministic_params(analysis_type, param_user)
+    probabilistic_dict = get_probabilistic_params(analysis_type, param_user)
     
     # Combine into one dict
     param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
@@ -1396,21 +1414,27 @@ if __name__ == "__main__":
     
     # Create the cov_pop_dict based on coverage for that type of intervention an
     # population
-    cov_pop_dict = create_coverage_population_dict(coverage, population, param_dict)
+    cov_pop_dict = create_coverage_population_dict(coverage, 
+                                                   population, 
+                                                   param_dict)
     
     # Adjust cov_pop_dict so the values are now dicts where the keys are scenarios
     # and the values are dfs customised to the scenarios
-    cov_pop_dict = adjust_cov_pop_for_trials(cov_pop_dict, param_dict)
+    cov_pop_dict = adjust_cov_pop_for_trials(cov_pop_dict, 
+                                             param_dict)
     
     # Merge the burden and coverage / population dfs
-    cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, cov_pop_dict)
+    cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, 
+                                                   cov_pop_dict)
     
     # Adjust the dfs in cov_pop_burden_dict for intervention factors such as the 
     # endemicity threshold, diagnostic inflation and intervention cut
-    cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, param_dict)
+    cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, 
+                                                          param_dict)
     
     # Apply various geographical exceptions see the updated
-    cov_pop_burden_dict = apply_geography_exceptions(cov_pop_burden_dict, param_user_all)
+    cov_pop_burden_dict = apply_geography_exceptions(cov_pop_burden_dict, 
+                                                     param_user_all)
     
     # Calculate lives_touched and input them to 
     param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
@@ -1426,14 +1450,21 @@ if __name__ == "__main__":
     base_cov_pop_burden_dict = {k: cov_pop_burden_dict[k]['base']
                                 for k in cov_pop_burden_dict.keys()}
     
-    bridge_graph_dict = get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted,
+    bridge_graph_dict = get_bridging_data(base_cov_pop_burden_dict, 
+                                          burden_dict_unadjusted,
                                           param_user_dict)
     
     # Export graphs for all of the analyses
-    draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, graph_dir)
+    draw_graphs_export(probabilistic_dict,
+                       deterministic_dict, 
+                       bridge_graph_dict, 
+                       graph_dir)
     
     # Turn the graphs into formatted slides
-    create_all_slides(param_dict, slides_dir, graph_dir, ppt_template_name)
+    create_all_slides(param_dict, 
+                      slides_dir, 
+                      graph_dir, 
+                      ppt_template_name)
     
     # Update param_user_all ready for export
     param_user_all = update_param_user_all(deterministic_dict, 
