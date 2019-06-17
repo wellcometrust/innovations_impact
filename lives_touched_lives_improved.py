@@ -20,80 +20,104 @@ from pptx import Presentation
 
 
 
-# Set working directory and options
-import os
-os.chdir('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data')
-directory = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+# Set up directories, file names and analysis type
+data_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
+graph_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+backup_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/'
+slides_dir = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
 
-# Section 2:
-# Import parameters csv and import datasets
+param_csv_name = 'LTLI_parameters.csv'
+population_csv_name = 'GBD_population_2016_reshaped.csv'
+burden_csv_name = 'gbd_data_wide_2017.csv'
+coverage_xls_name = 'intervention_coverage_assumptions.xlsm'
+coverage_sheet_name = 'Penetration assumptions'
 
-# A dictionary to determine the analysis type - update as prefered
-analysis_type = {'run_all' : False,
-                 'run_deterministic' : True,
-                 'run_probabilistic' : True,
-                 'num_trials' : 1000,
-                 'overwrite_parameters' : True
+ppt_template_name = 'mm_template_impact.pptx'
+
+
+analysis_type = {'run_all' : True, # True or False
+                 'run_deterministic' : True, # True or False
+                 'run_probabilistic' : True, # True or False
+                 'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
+                 'overwrite_parameters' : False # True or False
                   } 
 
 # Section 3:
 # Importing a csv of saved paramters and setting the id to be the index
-param_user_all = pd.read_csv('LTLI_parameters.csv')
-param_user_all = param_user_all.set_index('id_code')
-param_user_dict = {code : param_user_all.loc[code] 
-                   for code in param_user_all.index.tolist()}
+def load_params(csv_name, directory):
+    """Imports the params and returns them as a df"""
+    csv_path = directory + csv_name
+    param_user_all = pd.read_csv(csv_path )
+    param_user_all = param_user_all.set_index('id_code')
+    return param_user_all
 
-# Importing the relevant population data
-population = pd.read_csv("GBD_population_2016_reshaped.csv")
+def create_param_dict(param_user_all):
+    """Turns df of parameters into a dict"""
+    param_user_dict = {code : param_user_all.loc[code] 
+                       for code in param_user_all.index.tolist()}
+    return param_user_dict
 
-# Subset the most relevant columns - this list could be updated to capture other 
-# relevant age groups - they presently capture infants, young children, children/
-# adolescents, working age people and then retired people
-pop_columns = ['location_name', 'Both_<1 year', 'Both_1 to 4',
-               'Both_5-14 years', 'Both_15-49 years', 'Both_50-69 years',
-               'Both_70+ years']
-
-population = population.loc[:, pop_columns]
-
-# Merge two of the columns to make a more relevant one
-population.insert(loc = 5, column =  'Both_15-69 years', 
-                  value = (population['Both_15-49 years'] + population['Both_50-69 years']))
-
-# Remove the merged columns 
-pop_new_columns = [column for column in list(population) 
-                   if not column in ['Both_15-49 years', 'Both_50-69 years']]
-
-population = population[pop_new_columns]
-
-# Rename columns to more consistent / intuitive names
-pop_new_names = {'location_name' : 'country', 'Both_<1 year' : 'pop_0-0',
-                 'Both_1 to 4' : 'pop_1-4', 'Both_5-14 years' : 'pop_5-14', 
-                 'Both_15-69 years' : 'pop_15-69', 'Both_70+ years' : 'pop_70-100'}
-
-population = population.rename(columns = pop_new_names)
-
-# Reindex so country is the index
-population = population.set_index(keys = 'country', drop = True)
+def load_population_data(csv_name, directory):
+    """Imports population data, regroups columns, renames cols, returns a df"""
+    # Importing the relevant population data
+    csv_path = directory + csv_name
+    population = pd.read_csv(csv_path)
+    
+    # Subset the most relevant columns - this list could be updated to capture other 
+    # relevant age groups - they presently capture infants, young children, children/
+    # adolescents, working age people and then retired people
+    pop_columns = ['location_name', 'Both_<1 year', 'Both_1 to 4',
+                   'Both_5-14 years', 'Both_15-49 years', 'Both_50-69 years',
+                   'Both_70+ years']
+    
+    population = population.loc[:, pop_columns]
+    
+    # Merge two of the columns to make a more relevant one
+    population.insert(loc = 5, column =  'Both_15-69 years', 
+                      value = (population['Both_15-49 years'] + population['Both_50-69 years']))
+    
+    # Remove the columns which are reflected in new merged column
+    pop_new_columns = [column for column in list(population) 
+                       if not column in ['Both_15-49 years', 'Both_50-69 years']]
+    
+    population = population[pop_new_columns]
+    
+    # Rename columns to more consistent / intuitive names
+    pop_new_names = {'location_name' : 'country', 'Both_<1 year' : 'pop_0-0',
+                     'Both_1 to 4' : 'pop_1-4', 'Both_5-14 years' : 'pop_5-14', 
+                     'Both_15-69 years' : 'pop_15-69', 'Both_70+ years' : 'pop_70-100'}
+    
+    population = population.rename(columns = pop_new_names)
+    
+    # Reindex so country is the index
+    population = population.set_index(keys = 'country', drop = True)
+    
+    return population
 
 # Importing the relevant disease burden data
-burden_all = pd.read_csv('gbd_data_wide_2017.csv')
-
-burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
+def load_burden_data(csv_name, directory):
+    """Imports burden data, cleans col names, returns df"""
+    csv_path = directory + csv_name
+    burden_all = pd.read_csv(csv_path)
+    burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
+    return burden_all
 
 # Importing the relevant coverage data
-coverage = pd.read_excel('C:/Users/laurenct/OneDrive - Wellcome Cloud/Health metrics/Vaccines data/Intervention penetration group placeholder.xlsm', 
-                         sheet_name = 'Penetration assumptions')
-
-coverage.columns = coverage.iloc[10]
-coverage = coverage.iloc[11:, 1:]
-
-cov_new_columns = [column for column in list(coverage) if re.search('cover|^country', column)]
-coverage = coverage[cov_new_columns]
-
-cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
-coverage = coverage.rename(columns = cov_new_names)
-coverage.index = coverage['country']
-
+def load_coverage_assumptions(excel_name, sheet_name, directory):
+    """Imports coverage assumptions, cleans and returns a df"""
+    coverage = pd.read_excel(directory+'intervention_coverage_assumptions.xlsm', 
+                             sheet_name = 'Penetration assumptions')
+    
+    coverage.columns = coverage.iloc[10]
+    coverage = coverage.iloc[11:, 1:]
+    
+    cov_new_columns = [column for column in list(coverage) if re.search('cover|^country', column)]
+    coverage = coverage[cov_new_columns]
+    
+    cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
+    coverage = coverage.rename(columns = cov_new_names)
+    coverage.index = coverage['country']
+    return coverage
 
 # Section 4
 # Declaring all the functions used in the script
@@ -1504,14 +1528,14 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
         bridge_data_dict[key] = bridge_graph_df
     return(bridge_data_dict)
 
-def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, directory):
+def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, graph_dir):
     """Exports graphs to a given directory based on the data it is given
            Inputs:
                probabilistic_dict - dict - keys are codes and values are dfs
                    of trial parameters and estimates
                deterministic_dict - dict - keys are codes and values are dfs
                    of scenario parameters and estimates
-               directory - str - the directory where graphs should be exported
+               graph_dir - str - the directory where graphs should be exported
            Exports:
                4 graphs for each code to the directory
     """
@@ -1519,39 +1543,37 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
         graph_data = probabilistic_dict[code]
         variable = 'lives_touched'
         file_name = code+'_probabilistic_'+variable
-        probability_histogram(graph_data, variable, directory, file_name)
+        probability_histogram(graph_data, variable, graph_dir, file_name)
         variable = 'lives_improved'
         file_name = code+'_probabilistic_'+variable
-        probability_histogram(graph_data, variable, directory, file_name)
+        probability_histogram(graph_data, variable, graph_dir, file_name)
     
     for code in deterministic_dict.keys():
         param_df = deterministic_dict[code]
         variable = 'lives_touched'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, directory, file_name, variable)
+        tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
         variable = 'lives_improved'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, directory, file_name, variable)
+        tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
     
     for code in bridge_graph_dict.keys():
         file_name = code+'_bridge_graph'
         graph_data = bridge_graph_dict[code]
-        bridge_plot(graph_data, directory, file_name)
+        bridge_plot(graph_data, graph_dir, file_name)
 
 # Section 13:
-def graphs_to_slides(project_id):
+def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     """
     """
-    folder_root = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
-    template_location = folder_root + 'mm_template_impact.pptx'
-    export_location = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
+    template_location = graph_dir + template_name
     prs = Presentation(template_location)
         
     main_slide = prs.slides[0]
     
-    bridge_path = folder_root+project_id+'_bridge_graph.png'
+    bridge_path = graph_dir+project_id+'_bridge_graph.png'
     bridge_box = main_slide.shapes[5]
     bridge_top = bridge_box.top-10000
     bridge_left = bridge_box.left-10000
@@ -1559,13 +1581,13 @@ def graphs_to_slides(project_id):
     
     lt_appendix_slide = prs.slides[1]
     
-    lt_tornado_path = folder_root+project_id+'_deterministic_lives_touched.png'
+    lt_tornado_path = graph_dir+project_id+'_deterministic_lives_touched.png'
     lt_tornado_box = lt_appendix_slide.shapes[5]
     lt_tornado_top = lt_tornado_box.top
     lt_tornado_left = lt_tornado_box.left-10000
     lt_appendix_slide.shapes.add_picture(lt_tornado_path, top = lt_tornado_top, left = lt_tornado_left)
     
-    lt_histogram_path = folder_root+project_id+'_probabilistic_lives_touched.png'
+    lt_histogram_path = graph_dir+project_id+'_probabilistic_lives_touched.png'
     lt_histogram_box = lt_appendix_slide.shapes[6]
     lt_histogram_top = lt_histogram_box.top
     lt_histogram_left = lt_histogram_box.left
@@ -1573,13 +1595,13 @@ def graphs_to_slides(project_id):
     
     li_appendix_slide = prs.slides[2]
     
-    li_tornado_path = folder_root+project_id+'_deterministic_lives_improved.png'
+    li_tornado_path = graph_dir+project_id+'_deterministic_lives_improved.png'
     li_tornado_box = li_appendix_slide.shapes[5]
     li_tornado_top = li_tornado_box.top
     li_tornado_left = li_tornado_box.left-10000
     li_appendix_slide.shapes.add_picture(li_tornado_path, top = li_tornado_top, left = li_tornado_left)
     
-    li_histogram_path = folder_root+project_id+'_probabilistic_lives_improved.png'
+    li_histogram_path = graph_dir+project_id+'_probabilistic_lives_improved.png'
     li_histogram_box = li_appendix_slide.shapes[6]
     li_histogram_top = li_histogram_box.top-5000
     li_histogram_left = li_histogram_box.left
@@ -1595,11 +1617,11 @@ def graphs_to_slides(project_id):
     prs.save(new_dir+'/'+project_id+'_mm_impact_charts.pptx')
     
 
-def create_all_slides(param_dict):
+def create_all_slides(param_dict, export_location, graph_dir, template_name):
     """
     """
     for project_id in param_dict.keys():
-        graphs_to_slides(project_id)
+        graphs_to_slides(project_id, export_location, graph_dir, template_name)
 
 # Section 14:    
 def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
@@ -1624,7 +1646,7 @@ def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all
         param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
     return param_user_all
 
-def export_estimates(param_user_all, analysis_type):
+def export_estimates(param_user_all, analysis_type, backup_dir):
     """Overwrite the main csv with the updated version of estimates / paramters
        Inputs:
            param_user_all - a df of parameters and estimates
@@ -1634,7 +1656,7 @@ def export_estimates(param_user_all, analysis_type):
     # Write back up csv
     time_now = datetime.datetime.now()
     data_str = time_now.strftime('%Y_%m_%d_%H_%M')
-    back_up_path = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/LTLI_parameters_python_'+data_str+'.csv'
+    back_up_path = backup_dir+'LTLI_parameters_python_'+data_str+'.csv'
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
     if analysis_type['overwrite_parameters']:
@@ -1647,6 +1669,20 @@ def main():
 
 if __name__ == "__main__":
    
+    # Loads in the relevant model parameters
+    param_user_all = load_params(param_csv_name, data_dir)
+    
+    # Transforms the parameters to a dict for future transformation
+    param_user_dict = create_param_dict(param_user_all)
+    
+    population = load_population_data(population_csv_name, data_dir) 
+    
+    burden_all = load_burden_data(burden_csv_name, data_dir)
+    
+    coverage = load_coverage_assumptions(coverage_xls_name,
+                                         coverage_sheet_name,
+                                         data_dir)
+
     # Write in a parameter checking function as the first function
     check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
     
@@ -1710,17 +1746,17 @@ if __name__ == "__main__":
                                           param_user_dict)
     
     # Export graphs for all of the analyses
-    draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, directory)
+    draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, graph_dir)
     
     # Turn the graphs into formatted slides
-    create_all_slides(param_dict)
+    create_all_slides(param_dict, slides_dir, graph_dir, ppt_template_name)
     
     # Update param_user_all ready for export
     param_user_all = update_param_user_all(deterministic_dict, 
                                            probabilistic_dict, 
                                            param_user_all,
                                            param_user)
-    export_estimates(param_user_all, analysis_type)
+    export_estimates(param_user_all, analysis_type, backup_dir)
     
     main()
 
