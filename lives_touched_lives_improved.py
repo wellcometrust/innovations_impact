@@ -7,7 +7,7 @@ Lives touched, lives improved model
 @author: LaurencT
 """
 # Section 1 (see README for context)
-# Import all functions required
+# Import all standardised libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,12 +17,18 @@ from scipy.stats import beta
 import re
 import datetime
 from pptx import Presentation
+import sys, os
+
+# Import other modules written for LTLI
+sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
+import model_inputs
 
 
 
 # Set up directories, file names and analysis type
 data_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
 graph_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+outputs_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/outputs/'
 backup_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/'
 slides_dir = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
 
@@ -35,18 +41,18 @@ coverage_sheet_name = 'Penetration assumptions'
 ppt_template_name = 'mm_template_impact.pptx'
 
 
-analysis_type = {'run_all' : True, # True or False
+analysis_type = {'run_all' : False, # True or False
                  'run_deterministic' : True, # True or False
                  'run_probabilistic' : True, # True or False
                  'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
-                 'overwrite_parameters' : False # True or False
+                 'overwrite_estimates' : False # True or False
                   } 
 
 # Section 3:
 # Importing a csv of saved paramters and setting the id to be the index
 def load_params(csv_name, directory):
     """Imports the params and returns them as a df"""
-    csv_path = directory + csv_name
+    csv_path = os.path.join(directory, csv_name)
     param_user_all = pd.read_csv(csv_path )
     param_user_all = param_user_all.set_index('id_code')
     return param_user_all
@@ -57,67 +63,7 @@ def create_param_dict(param_user_all):
                        for code in param_user_all.index.tolist()}
     return param_user_dict
 
-def load_population_data(csv_name, directory):
-    """Imports population data, regroups columns, renames cols, returns a df"""
-    # Importing the relevant population data
-    csv_path = directory + csv_name
-    population = pd.read_csv(csv_path)
-    
-    # Subset the most relevant columns - this list could be updated to capture other 
-    # relevant age groups - they presently capture infants, young children, children/
-    # adolescents, working age people and then retired people
-    pop_columns = ['location_name', 'Both_<1 year', 'Both_1 to 4',
-                   'Both_5-14 years', 'Both_15-49 years', 'Both_50-69 years',
-                   'Both_70+ years']
-    
-    population = population.loc[:, pop_columns]
-    
-    # Merge two of the columns to make a more relevant one
-    population.insert(loc = 5, column =  'Both_15-69 years', 
-                      value = (population['Both_15-49 years'] + population['Both_50-69 years']))
-    
-    # Remove the columns which are reflected in new merged column
-    pop_new_columns = [column for column in list(population) 
-                       if not column in ['Both_15-49 years', 'Both_50-69 years']]
-    
-    population = population[pop_new_columns]
-    
-    # Rename columns to more consistent / intuitive names
-    pop_new_names = {'location_name' : 'country', 'Both_<1 year' : 'pop_0-0',
-                     'Both_1 to 4' : 'pop_1-4', 'Both_5-14 years' : 'pop_5-14', 
-                     'Both_15-69 years' : 'pop_15-69', 'Both_70+ years' : 'pop_70-100'}
-    
-    population = population.rename(columns = pop_new_names)
-    
-    # Reindex so country is the index
-    population = population.set_index(keys = 'country', drop = True)
-    
-    return population
 
-# Importing the relevant disease burden data
-def load_burden_data(csv_name, directory):
-    """Imports burden data, cleans col names, returns df"""
-    csv_path = directory + csv_name
-    burden_all = pd.read_csv(csv_path)
-    burden_all.columns = [column.lower() for column in burden_all.columns.tolist()]
-    return burden_all
-
-# Importing the relevant coverage data
-def load_coverage_assumptions(excel_name, sheet_name, directory):
-    """Imports coverage assumptions, cleans and returns a df"""
-    coverage = pd.read_excel(directory+'intervention_coverage_assumptions.xlsm', 
-                             sheet_name = 'Penetration assumptions')
-    
-    coverage.columns = coverage.iloc[10]
-    coverage = coverage.iloc[11:, 1:]
-    
-    cov_new_columns = [column for column in list(coverage) if re.search('cover|^country', column)]
-    coverage = coverage[cov_new_columns]
-    
-    cov_new_names = {name : str.lower(re.sub(" ", "_", name)) for name in list(coverage)}
-    coverage = coverage.rename(columns = cov_new_names)
-    coverage.index = coverage['country']
-    return coverage
 
 # Section 4
 # Declaring all the functions used in the script
@@ -132,7 +78,7 @@ def check_analysis_type(analysis_type):
     analysis_values = [analysis_type['run_all'], 
                        analysis_type['run_deterministic'],
                        analysis_type['run_probabilistic'],
-                       analysis_type['overwrite_parameters']]
+                       analysis_type['overwrite_estimates']]
     # Test to see if they are bools
     for value in analysis_values:
         if not type(value) is bool:
@@ -155,7 +101,6 @@ def check_columns(param_user_all):
        parameters tab
        Inputs:
            param_user_all - a df of user inputted parameters
-
     """
     necessary_columns = ['id_name', 'intervention_type', 'disease_1', 'disease_2', 
                          'disease_3', 'age', 'population_upper', 
@@ -1327,7 +1272,7 @@ def tornado_matplotlib(graph_data, base, directory, file_name, variable):
     plt.tight_layout()
     
     # Set up export path and export the chart
-    path = directory+file_name+'.png'
+    path = os.path.join(directory, file_name+'.png')
     fig.savefig(path)
     print('Please find the chart at', path)
     plt.close(fig=None)
@@ -1392,7 +1337,7 @@ def probability_histogram(graph_data, variable, directory, file_name):
     plt.tight_layout()
     
     # Export
-    path = directory+file_name+'.png'    
+    path = os.path.join(directory, file_name+'.png')   
     plt.savefig(path)
     print('Please find the chart at', path)
     plt.close(fig=None)
@@ -1435,7 +1380,7 @@ def bridge_plot(graph_data, directory, file_name):
     plt.tight_layout()
     
     # Export
-    path = directory+file_name+'.png'    
+    path = os.path.join(directory, file_name+'.png')
     plt.savefig(path)
     print('Please find the chart at', path)
     plt.close(fig=None)
@@ -1568,12 +1513,12 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
 def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     """
     """
-    template_location = graph_dir + template_name
+    template_location = os.path.join(graph_dir, template_name)
     prs = Presentation(template_location)
         
     main_slide = prs.slides[0]
     
-    bridge_path = graph_dir+project_id+'_bridge_graph.png'
+    bridge_path = os.path.join(graph_dir,project_id + '_bridge_graph.png')
     bridge_box = main_slide.shapes[5]
     bridge_top = bridge_box.top-10000
     bridge_left = bridge_box.left-10000
@@ -1581,13 +1526,13 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     
     lt_appendix_slide = prs.slides[1]
     
-    lt_tornado_path = graph_dir+project_id+'_deterministic_lives_touched.png'
+    lt_tornado_path = os.path.join(graph_dir, project_id + '_deterministic_lives_touched.png')
     lt_tornado_box = lt_appendix_slide.shapes[5]
     lt_tornado_top = lt_tornado_box.top
     lt_tornado_left = lt_tornado_box.left-10000
     lt_appendix_slide.shapes.add_picture(lt_tornado_path, top = lt_tornado_top, left = lt_tornado_left)
     
-    lt_histogram_path = graph_dir+project_id+'_probabilistic_lives_touched.png'
+    lt_histogram_path = os.path.join(graph_dir, project_id + '_probabilistic_lives_touched.png')
     lt_histogram_box = lt_appendix_slide.shapes[6]
     lt_histogram_top = lt_histogram_box.top
     lt_histogram_left = lt_histogram_box.left
@@ -1595,26 +1540,27 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     
     li_appendix_slide = prs.slides[2]
     
-    li_tornado_path = graph_dir+project_id+'_deterministic_lives_improved.png'
+    li_tornado_path = os.path.join(graph_dir, project_id + '_deterministic_lives_improved.png')
     li_tornado_box = li_appendix_slide.shapes[5]
     li_tornado_top = li_tornado_box.top
     li_tornado_left = li_tornado_box.left-10000
     li_appendix_slide.shapes.add_picture(li_tornado_path, top = li_tornado_top, left = li_tornado_left)
     
-    li_histogram_path = graph_dir+project_id+'_probabilistic_lives_improved.png'
+    li_histogram_path = os.path.join(graph_dir, project_id + '_probabilistic_lives_improved.png')
     li_histogram_box = li_appendix_slide.shapes[6]
     li_histogram_top = li_histogram_box.top-5000
     li_histogram_left = li_histogram_box.left
     li_appendix_slide.shapes.add_picture(li_histogram_path, top = li_histogram_top, left = li_histogram_left)
     
-    new_dir = export_location+'/'+project_id
+    new_dir = os.path.join(export_location, project_id)
     
     try:
         os.mkdir(new_dir)
     except FileExistsError:
         pass
     
-    prs.save(new_dir+'/'+project_id+'_mm_impact_charts.pptx')
+    upload_path = os.path.join(new_dir+'/', project_id + '_mm_impact_charts.pptx')
+    prs.save(upload_path)
     
 
 def create_all_slides(param_dict, export_location, graph_dir, template_name):
@@ -1646,21 +1592,24 @@ def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all
         param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
     return param_user_all
 
-def export_estimates(param_user_all, analysis_type, backup_dir):
+def export_estimates(param_user_all, analysis_type, backup_dir, outputs_dir):
     """Overwrite the main csv with the updated version of estimates / paramters
        Inputs:
            param_user_all - a df of parameters and estimates
        Writes:
            csvs to two different locations
     """
+    # TODO Make sure these draw in the previous estimates and only update the relevant
+    # ones that have been run
     # Write back up csv
     time_now = datetime.datetime.now()
     data_str = time_now.strftime('%Y_%m_%d_%H_%M')
-    back_up_path = backup_dir+'LTLI_parameters_python_'+data_str+'.csv'
+    back_up_path = os.path.join(backup_dir, 'LTLI_parameters_python_' + data_str + '.csv')
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
-    if analysis_type['overwrite_parameters']:
-        param_user_all.to_csv('LTLI_parameters.csv')
+    if analysis_type['overwrite_estimates']:
+        output_path = os.path.join(outputs_dir, 'LTLI_outputs.csv')
+        param_user_all.to_csv(output_path)
 
 # Section 15:    
 # Code run sequentially
@@ -1675,13 +1624,13 @@ if __name__ == "__main__":
     # Transforms the parameters to a dict for future transformation
     param_user_dict = create_param_dict(param_user_all)
     
-    population = load_population_data(population_csv_name, data_dir) 
+    population = model_inputs.load_population_data(population_csv_name, data_dir) 
     
-    burden_all = load_burden_data(burden_csv_name, data_dir)
+    burden_all = model_inputs.load_burden_data(burden_csv_name, data_dir)
     
-    coverage = load_coverage_assumptions(coverage_xls_name,
-                                         coverage_sheet_name,
-                                         data_dir)
+    coverage = model_inputs.load_coverage_assumptions(coverage_xls_name,
+                                                      coverage_sheet_name,
+                                                      data_dir)
 
     # Write in a parameter checking function as the first function
     check_inputs(analysis_type, param_user_all, population, coverage, burden_all)
@@ -1756,7 +1705,7 @@ if __name__ == "__main__":
                                            probabilistic_dict, 
                                            param_user_all,
                                            param_user)
-    export_estimates(param_user_all, analysis_type, backup_dir)
+    export_estimates(param_user_all, analysis_type, backup_dir, outputs_dir)
     
     main()
 
