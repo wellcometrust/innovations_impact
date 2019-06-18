@@ -12,10 +12,10 @@ import re
 def load_params(csv_name, directory):
     """Imports the params and returns them as a df"""
     csv_path = os.path.join(directory, csv_name)
-    param_user_all = pd.read_csv(csv_path )
+    param_user_all = pd.read_csv(csv_path)
     param_user_all = param_user_all.set_index('id_code')
     return param_user_all
-
+    
 def create_param_dict(param_user_all):
     """Turns df of parameters into a dict"""
     param_user_dict = {code : param_user_all.loc[code] 

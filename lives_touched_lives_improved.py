@@ -17,7 +17,8 @@ from scipy.stats import beta
 import re
 import datetime
 from pptx import Presentation
-import sys, os
+import sys
+import os
 
 # Import other modules written for LTLI
 sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
@@ -26,6 +27,8 @@ import input_check
 from probability_distribution_moments import beta_moments
 from probability_distribution_moments import gamma_moments
 from probability_distribution_moments import gamma_moments_burden
+import apply_exceptions
+import graph
 
 
 # Set up directories, file names and analysis type
@@ -36,19 +39,18 @@ backup_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/li
 slides_dir = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
 
 param_csv_name = 'LTLI_parameters.csv'
+estimates_csv_name = 'LTLI_outputs.csv'
 population_csv_name = 'GBD_population_2016_reshaped.csv'
 burden_csv_name = 'gbd_data_wide_2017.csv'
 coverage_xls_name = 'intervention_coverage_assumptions.xlsm'
 coverage_sheet_name = 'Penetration assumptions'
-
 ppt_template_name = 'mm_template_impact.pptx'
-
 
 analysis_type = {'run_all' : False, # True or False
                  'run_deterministic' : True, # True or False
                  'run_probabilistic' : True, # True or False
                  'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
-                 'overwrite_estimates' : False # True or False
+                 'overwrite_estimates' : True # True or False
                   } 
 
 # Section 3:
@@ -59,15 +61,14 @@ analysis_type = {'run_all' : False, # True or False
 # Section 4
 # Declaring all the functions used in the script
 
-def clear_exceptions(param_user_all, param_dict):
+def clear_exceptions(estimates_output, param_dict):
     """
     """
-    # TODO render obsolete as don't write over parameters csv
-    new_param_user_all = param_user_all.copy()
+    estimates_output = estimates_output.copy()
     for code in param_dict.keys():
-        new_param_user_all.loc[code, 'exception_count'] = 0
-        new_param_user_all.loc[code, 'exception_comment'] = '.'
-    return(new_param_user_all)
+        estimates_output.loc[code, 'exception_count'] = 0
+        estimates_output.loc[code, 'exception_comment'] = '.'
+    return(estimates_output)
 
 # Section 5:
 def lists_to_dict(list_keys, list_values):
@@ -87,8 +88,8 @@ def lists_to_dict(list_keys, list_values):
         return {k:v for k,v in zip(list_keys, list_values)}
 
 def deterministic_lists(analysis_type, param_user):
-    """Defines the different LTLI scenarios and which sets of parameters should
-       be called for each of them
+    """Defines the different LTLI scenarios and which list of parameters should
+       be used for each of them
        Inputs:
            analysis_type - the dictionary summarising what type of analysis is 
                being undertaken, must contain the key 'run_deterministic'
@@ -760,60 +761,7 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
     return cov_pop_burden_dict
 
 # Section 9:
-def update_exceptions(param_user_all, code, new_comment):
-    """Updates exception_count and exception comment columns of param_user for
-       appropriate codes
-       Inputs:
-           param_user_all - a df of parameters and estimates
-           code - a str - id_code in the form "dddddd000d[A-Z]"
-           new_comment - a str - explaining the nature of the exception
-       Returns:
-           param_user_all - a df of parameters and estimates (with updated 
-               exception details)
-    """
-    param_user_all.loc[code, 'exception_count'] += 1
-    param_user_all.loc[code, 'exception_comment'] += (new_comment+' ')
-    return(param_user_all)
 
-def apply_geography_exceptions(cov_pop_burden_dict, param_user_all):
-    """Applying exceptions where target_pop is non-zero only in certain geographies
-       Inputs:
-           cov_pop_burden_dict - a nested dict where keys are id_codes and then
-               scenarios and the values are dfs
-           param_user_all - a df of parameters and estimates
-       Returns: 
-           cov_pop_burden_dict - updated with geographical expections applied
-    """
-    for code in cov_pop_burden_dict.keys():
-        cov_pop_burden_trials = cov_pop_burden_dict[code]
-        if code == '2123460002B':
-            # Regional exception based on assumed product profile
-            super_regions = ['South Asia']
-            for index in cov_pop_burden_trials.keys():
-                cov_pop_burden_df = cov_pop_burden_trials[index]
-                cov_pop_burden_df['target_pop'] = (
-                        np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
-                                 cov_pop_burden_df['target_pop'],
-                                 0)
-                                                  )
-            new_comment = 'Only allowed for coverage in South Asia as in the TPP'
-            update_exceptions(param_user_all, code, new_comment)
-        elif code == '2123460002C':
-            # Regional exception based on assumed product profile
-            super_regions = ["Sub-Saharan Africa"]
-            for index in cov_pop_burden_trials.keys():
-                cov_pop_burden_df = cov_pop_burden_trials[index]
-                cov_pop_burden_df['target_pop'] = (
-                        np.where(np.isin(cov_pop_burden_df['super_region'], super_regions),
-                                 cov_pop_burden_df['target_pop'],
-                                 0)
-                                                  )
-            new_comment = 'Only allowed for coverage in Africa as in the TPP.'
-            update_exceptions(param_user_all, code, new_comment)
-        else:
-            # As there is no expceptions relevant here
-            pass
-    return(cov_pop_burden_dict)
 
 # Section 10:
 def calculate_lives_touched(cov_pop_burden_df):
@@ -911,198 +859,6 @@ def separate_param_dict(param_dict, analysis_type):
     return {'det': deterministic_dict, 'prob': probabilistic_dict}
 
 # Section 12:
-def tornado_matplotlib(graph_data, base, directory, file_name, variable):
-    """Creates a tornado diagram and saves it to a prespecified directory
-       Inputs:
-           graphs_data - a df which must contain the columns 'variables' for 
-               the names of the variables being graphed, 'lower' for the lower
-               bounds of the deterministic sensitivity and 'ranges' for the total
-               range between the lower and upper
-           base - a float with the base case value
-           directory - str - a path to a directory where the plot should be saved
-           file_name - str- a useful name by which the plot with be saved
-       Exports:
-           A chart to the prespecified directory
-    """
-    # Sort the graph data so the widest range is at the top and reindex
-    graph_data.copy()
-    graph_data = graph_data.sort_values('ranges', ascending = False)
-    graph_data.index = list(range(len(graph_data.index)))[::-1]
-
-    # The actual drawing part
-    fig = plt.figure()
-    
-    # Plot the bars, one by one
-    for index in graph_data.index:
-        # The width of the 'low' and 'high' pieces
-        
-        # If to ensure visualisation is resilient to lower value of parameter
-        # leading to higher estimate of variable
-        if graph_data.loc[index, 'upper']>graph_data.loc[index, 'lower']:
-            low = graph_data.loc[index, 'lower']
-            face_colours = ['red', 'green']
-        else:
-            low = graph_data.loc[index, 'upper']
-            face_colours = ['green', 'red']
-        value = graph_data.loc[index, 'ranges']
-        low_width = base - low
-        high_width = low + value - base
-    
-        # Each bar is a "broken" horizontal bar chart
-        plt.broken_barh(
-            [(low, low_width), (base, high_width)],
-            (index - 0.4, 0.8),
-            facecolors= face_colours,  # Try different colors if you like
-            edgecolors=['black', 'black'],
-            linewidth=1,
-        )
-    
-    # Draw a vertical line down the middle
-    plt.axvline(base, color='black', linestyle='dashed')
-    
-    # Position the x-axis and hide unnecessary axes
-    ax = plt.gca()  # (gca = get current axes)
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.xaxis.set_ticks_position('bottom')
-    
-    # Set axis labels
-    label = re.sub('_', ' ', variable).title()
-    plt.xlabel(label)
-    plt.ylabel('Model Parameters')
-    
-    # Make the y-axis display the variables
-    plt.yticks(graph_data.index.tolist(), graph_data['variables'])
-    
-    # Set the portion of the x- and y-axes to show
-    plt.xlim(left = 0)
-    plt.ylim(-1, len(graph_data.index))
-    
-    # Stop scientific formats
-    ax.get_xaxis().get_major_formatter().set_scientific(False)
-    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
-    fig.autofmt_xdate()
-    
-    # Change axis text format
-    plt.rcParams.update({'font.size': 12})
-    plt.rcParams.update({'font.family': 'calibri'})
-    
-    # Make it tight format 
-    plt.tight_layout()
-    
-    # Set up export path and export the chart
-    path = os.path.join(directory, file_name+'.png')
-    fig.savefig(path)
-    print('Please find the chart at', path)
-    plt.close(fig=None)
-
-def probability_histogram(graph_data, variable, directory, file_name):
-    """Creates a probability histogram and exports it to a directory
-       Inputs:
-           graph_data - df 
-           variable - str - the variable in graph_data to be histogrammed
-           directory - str - a path to a directory where the plot should be saved
-           file_name - str- a useful name by which the plot with be saved
-       Exports:
-           A chart to the prespecified directory
-    """
-    # Get the right series and make it np
-    graph_data = graph_data[variable]
-    
-    # Calculate confidence intervals
-    upper = graph_data.quantile(0.975)
-    lower = graph_data.quantile(0.025)
-    # Histogram:
-    # Bin it
-    n, bin_edges = np.histogram(graph_data, 30)
-    # Normalize it, so that every bins value gives the probability of that bin
-    bin_probability = n/float(n.sum()) 
-    # Get the mid points of every bin
-    bin_middles = (bin_edges[1:]+bin_edges[:-1])/2.
-    # Compute the bin-width
-    bin_width = bin_edges[1]-bin_edges[0]
-    # Plot the histogram as a bar plot
-    fig, ax = plt.subplots()
-    plt.bar(bin_middles, bin_probability, width=bin_width, color = '#003170')
-    
-    # Add 95% confidence interval lines
-    plt.axvline(upper, color='black', linestyle='dashed')
-    plt.axvline(lower, color='black', linestyle='dashed')
-    
-    # Add 95% confidencei interval labels - REMOVED BECAUSE IT OVERLAPPED WITH BARS / LINES
-    # max_prob = max(bin_probability)
-    # plt.text((upper+lower/8), max_prob*2/3, 'Upper (97.5%)', rotation = 90)
-    # plt.text((lower-lower/5), max_prob*2/3, 'Lower (2.5%)', rotation = 90)
-    
-    # Axis labels
-    label = re.sub('_', ' ', variable).title()
-    plt.xlabel(label)
-    plt.ylabel('Probability')
-    
-    # Set the portion of the x- and y-axes to show
-    plt.xlim(left = 0)
-    
-    # Stop axis scientific formats
-    ax.get_xaxis().get_major_formatter().set_scientific(False)
-    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
-    ax.get_yaxis().get_major_formatter().set_scientific(False)
-    fig.autofmt_xdate()
-    
-    # Change axis text format
-    plt.rcParams.update({'font.size': 12})
-    plt.rcParams.update({'font.family': 'calibri'})
-    
-    # Make it tight format 
-    plt.tight_layout()
-    
-    # Export
-    path = os.path.join(directory, file_name+'.png')   
-    plt.savefig(path)
-    print('Please find the chart at', path)
-    plt.close(fig=None)
-    
-def bridge_plot(graph_data, directory, file_name):
-    """Plots a bridge bar chart and exports it to a directory
-       Inputs:
-           graph_data - df with the columns stage, adjustment and remainder
-           directory - str - a path to a directory where the plot should be saved
-           file_name - str- a useful name by which the plot with be saved
-       Exports:
-           A chart to the prespecified directory
-    """
-    ind = np.arange(len(graph_data.index))    # the x locations for the groups
-    width_remainder = 0.4       # the width of the bars: can also be len(x) sequence
-    width_adjustment = 0.2
-    
-    fig, ax = plt.subplots()
-    
-    p1 = plt.bar(ind, graph_data['remainder'], width_remainder, color = '#003170')
-    p2 = plt.bar(ind, graph_data['adjustment'], width_adjustment,
-                 bottom=graph_data['remainder'])
-    connector = plt.plot(graph_data['remainder'], marker='o', color='k')
-       
-    # plt.ylabel('Number of people')
-    # plt.title('Number of people at different model stages')
-    plt.xticks(ind, graph_data['stage'])
-    plt.legend((p1[0], p2[0]), ('Remainder', 'Adjustment'))
-    
-    # Stop axis scientific formats
-    ax.get_yaxis().get_major_formatter().set_scientific(False)
-    ax.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
-    fig.autofmt_xdate()
-    
-    # Change axis text format
-    plt.rcParams.update({'font.size': 12})
-    plt.rcParams.update({'font.family': 'calibri'})
-    
-    # Make it tight format 
-    plt.tight_layout()
-    
-    # Export
-    path = os.path.join(directory, file_name+'.png')
-    plt.savefig(path)
-    print('Please find the chart at', path)
-    plt.close(fig=None)
 
 def restructure_graph_data_deterministic(param_df, variable):
     """Restructures data to the form needed by the tornado diagram
@@ -1131,14 +887,78 @@ def restructure_graph_data_deterministic(param_df, variable):
     graph_data.index = range(len(graph_data.index))
     return base, graph_data
 
-def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_user_dict):
+
+def vaccine_bridge_adjustments(cov_pop_burden_df, intervention_cut):
+    """Calculates the remainder of people included at each model stage and returns
+       the stage names and that remainder
     """
+    cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
+                                                 cov_pop_burden_df['target_pop'],
+                                                 0)
+    cov_pop_burden_df['lives_touched_base'] = (
+            cov_pop_burden_df['birth_cohort_endem']
+            *cov_pop_burden_df['prob_cover'] * 
+            cov_pop_burden_df['coverage'] / 
+            intervention_cut)
+    # Aggregate the columns to make a relevant for the graph
+    stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
+              'Expected lives touched\nfor a base vaccine\nin endemic countries',
+              'Lives touched', 'Lives improved']
+    remainder = [cov_pop_burden_df['target_pop'].sum(), 
+                 cov_pop_burden_df['birth_cohort_endem'].sum(),
+                 cov_pop_burden_df['lives_touched_base'].sum(),
+                 cov_pop_burden_df['lives_touched'].sum(),
+                 cov_pop_burden_df['lives_improved'].sum()
+                ]
+    return stage, remainder
+
+def diagnostic_bridge_adjustments(cov_pop_burden_df, intervention_cut):
+    """Calculates the remainder of people included at each model stage and returns
+       the stage names and that remainder
+    """
+    stage = ['Total patient pool', 'Relevant patient pool', 
+             'Target diagnostic pool',
+             'Expected lives touched\nfor a base diagnostic',
+             'Lives touched', 'Lives improved']
+    remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
+                 cov_pop_burden_df['incidence_number'].sum(),
+                 cov_pop_burden_df['target_pop'].sum(),
+                 cov_pop_burden_df['lives_touched_base'].sum(),
+                 cov_pop_burden_df['lives_touched'].sum(),
+                 cov_pop_burden_df['lives_improved'].sum()]  
+    return stage, remainder
+
+def therapeutic_bridge_adjustments(cov_pop_burden_df, intervention_cut):
+    """Calculates the remainder of people included at each model stage and returns
+       the stage names and that remainder
+    """
+    stage = ['Total patient pool', 'Relevant patient pool', 
+         'Expected lives touched\nfor a base therapeutic',
+         'Lives touched', 'Lives improved']
+    remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
+                 cov_pop_burden_df['target_pop'].sum(),
+                 cov_pop_burden_df['lives_touched_base'].sum(),
+                 cov_pop_burden_df['lives_touched'].sum(),
+                 cov_pop_burden_df['lives_improved'].sum()]
+    return stage, remainder
+
+
+def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_user_dict):
+    """Restructures data from various model stages into a form suitable for the bridging chart
+       Inputs:
+           base_cov_pop_burden_dict - 
+           burden_dict_unadjusted - 
+           param_user_dict - 
+       Returns:
+           a dict - keys are strings (id_code), values are dfs with the 
+               columns stage, adjustment and remainder
     """
     bridge_data_dict = {}
-    for key in base_cov_pop_burden_dict.keys():
-        intervention_type = param_user_dict[key]['intervention_type']
-        burden_df_unadjusted = burden_dict_unadjusted[key]        
-        cov_pop_burden_df = base_cov_pop_burden_dict[key]
+    for code in base_cov_pop_burden_dict.keys():
+        intervention_type = param_user_dict[code]['intervention_type']
+        intervention_cut = param_user_dict[code]['intervention_cut_mean']
+        burden_df_unadjusted = burden_dict_unadjusted[code]        
+        cov_pop_burden_df = base_cov_pop_burden_dict[code]
         # Create these columns because they are the same across modalities
         cov_pop_burden_df['naive_incidence_number'] = (
                 aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
@@ -1147,104 +967,111 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
                 cov_pop_burden_df['target_pop'] * 
                 cov_pop_burden_df['prob_cover'] * 
                 cov_pop_burden_df['coverage'] / 
-                param_user_dict[key]['intervention_cut_mean'])
+                intervention_cut)
+        
         cov_pop_burden_df['lives_touched'] = (
                 cov_pop_burden_df['lives_touched_base'] * 
-                param_user_dict[key]['intervention_cut_mean'])
+                intervention_cut)
+        
         cov_pop_burden_df['lives_improved'] = (
                 cov_pop_burden_df['lives_touched'] * 
-                param_user_dict[key]['efficacy_mean'])
+                param_user_dict[code]['efficacy_mean'])
+        
         if intervention_type == 'Vaccine':
             # Create vaccine specific columns
-            cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
-                                                         cov_pop_burden_df['target_pop'],
-                                                         0)
-            cov_pop_burden_df['lives_touched_base'] = (
-                    cov_pop_burden_df['birth_cohort_endem']
-                    *cov_pop_burden_df['prob_cover'] * 
-                    cov_pop_burden_df['coverage'] / 
-                    param_user_dict[key]['intervention_cut_mean'])
-            # Aggregate the columns to make a relevant for the graph
-            stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
-                      'Expected lives touched\nfor a base vaccine\nin endemic countries',
-                      'Lives touched', 'Lives improved']
-            remainder = [cov_pop_burden_df['target_pop'].sum(), 
-                         cov_pop_burden_df['birth_cohort_endem'].sum(),
-                         cov_pop_burden_df['lives_touched_base'].sum(),
-                         cov_pop_burden_df['lives_touched'].sum(),
-                         cov_pop_burden_df['lives_improved'].sum()
-                        ]
+            stage, remainder = vaccine_bridge_adjustments(cov_pop_burden_df, 
+                                                          intervention_cut)
         elif intervention_type == 'Diagnostic':
             # Aggregate the columns to make a relevant for the graph
-            stage = ['Total patient pool', 'Relevant patient pool', 
-                     'Target diagnostic pool',
-                     'Expected lives touched\nfor a base diagnostic',
-                     'Lives touched', 'Lives improved']
-            remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
-                         cov_pop_burden_df['incidence_number'].sum(),
-                         cov_pop_burden_df['target_pop'].sum(),
-                         cov_pop_burden_df['lives_touched_base'].sum(),
-                         cov_pop_burden_df['lives_touched'].sum(),
-                         cov_pop_burden_df['lives_improved'].sum()]            
+            stage, remainder = diagnostic_bridge_adjustments(cov_pop_burden_df, 
+                                                             intervention_cut)
         elif re.search('Therapeutic', intervention_type):
             # Aggregate the columns to make a relevant for the graph
-            stage = ['Total patient pool', 'Relevant patient pool', 
-                     'Expected lives touched\nfor a base therapeutic',
-                     'Lives touched', 'Lives improved']
-            remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
-                         cov_pop_burden_df['target_pop'].sum(),
-                         cov_pop_burden_df['lives_touched_base'].sum(),
-                         cov_pop_burden_df['lives_touched'].sum(),
-                         cov_pop_burden_df['lives_improved'].sum()]
+            stage, remainder = therapeutic_bridge_adjustments(cov_pop_burden_df, 
+                                                              intervention_cut)
         else:
             raise ValueError(intervention_type+' is not a recognised intervention_type')
+        
         # Calculate the adjustment based on the remainder at each stage
         adjustment = [0]+[remainder[i]-remainder[i+1] for i in range(len(remainder)-1)]
         bridge_graph_df = pd.DataFrame({'stage':stage, 
                                         'adjustment':adjustment, 
                                         'remainder':remainder})
-        bridge_data_dict[key] = bridge_graph_df
+        bridge_data_dict[code] = bridge_graph_df
     return(bridge_data_dict)
 
+def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_output, param_user):
+    """Updates estimates_output with new values for lives_touched and lives_improved 
+       (including the 95% confidence interval upper and lower bounds)
+       Inputs:
+           deterministic_dict - a dictionary where keys are id_codes and values
+               are dfs where one of the indexes is 'base' and columns are 
+               'lives_touched' and 'lives_improved'
+           probabilistic_dict - a dictionary where keys are id_codes and values
+               are dfs where columns are 'lives_touched' and 'lives_improved'
+           estimates_output - a df where indexes are id_codes 
+           param_user - dict - keys are id_codes for only the models that have been run
+       Returns:
+           a df updated with estimates
+    """
+    for code in param_user.keys():
+        determ_df = deterministic_dict[code]
+        prob_df = probabilistic_dict[code]
+        estimates_output.loc[code, 'lives_touched'] = determ_df.loc['base', 'lives_touched']
+        estimates_output.loc[code, 'lives_improved'] = determ_df.loc['base', 'lives_improved']
+        estimates_output.loc[code, 'lives_touched_025'] = prob_df['lives_touched'].quantile(0.025)
+        estimates_output.loc[code, 'lives_touched_975'] = prob_df['lives_touched'].quantile(0.975)
+        estimates_output.loc[code, 'lives_improved_025'] = prob_df['lives_improved'].quantile(0.025)
+        estimates_output.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
+    return estimates_output
+
 def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, graph_dir):
-    """Exports graphs to a given directory based on the data it is given
+    """Writes graphs to graph_dir based on the data it is given
            Inputs:
                probabilistic_dict - dict - keys are codes and values are dfs
                    of trial parameters and estimates
                deterministic_dict - dict - keys are codes and values are dfs
                    of scenario parameters and estimates
                graph_dir - str - the directory where graphs should be exported
-           Exports:
-               4 graphs for each code to the directory
+           Writes:
+               5 graphs for each code to graph_dir
     """
     for code in probabilistic_dict.keys():
         graph_data = probabilistic_dict[code]
         variable = 'lives_touched'
-        file_name = code+'_probabilistic_'+variable
-        probability_histogram(graph_data, variable, graph_dir, file_name)
+        file_name = code + '_probabilistic_' + variable
+        graph.probability_histogram(graph_data, variable, graph_dir, file_name)
         variable = 'lives_improved'
         file_name = code+'_probabilistic_'+variable
-        probability_histogram(graph_data, variable, graph_dir, file_name)
+        graph.probability_histogram(graph_data, variable, graph_dir, file_name)
     
     for code in deterministic_dict.keys():
         param_df = deterministic_dict[code]
         variable = 'lives_touched'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
+        graph.tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
         variable = 'lives_improved'
         base, graph_data = restructure_graph_data_deterministic(param_df, variable)
         file_name = code+'_deterministic_'+variable
-        tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
+        graph.tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
     
     for code in bridge_graph_dict.keys():
         file_name = code+'_bridge_graph'
         graph_data = bridge_graph_dict[code]
-        bridge_plot(graph_data, graph_dir, file_name)
+        graph.bridge_plot(graph_data, graph_dir, file_name)
 
 # Section 13:
-def graphs_to_slides(project_id, export_location, graph_dir, template_name):
-    """
+def graphs_to_slides(project_id, slides_dir, graph_dir, template_name):
+    """Imports the Monday Meeting ppt template and adds graphs for a given project 
+       creates a new dir in slides_dir for a new project and writes ppt there
+       Inputs:
+           project_id - str - an id_code for a model that has been run
+           slides_dir - str - a directory to write the formatted ppt
+           graph_dir - str - a directory where the graphs are saved
+           template_name - str - the file name for the MM template ppt
+       Writes:
+           creates a directory in slides_dir and uploads a ppt file there
     """
     template_location = os.path.join(graph_dir, template_name)
     prs = Presentation(template_location)
@@ -1299,7 +1126,7 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
                                          top = li_histogram_top, 
                                          left = li_histogram_left)
     
-    new_dir = os.path.join(export_location, project_id)
+    new_dir = os.path.join(slides_dir, project_id)
     
     try:
         os.mkdir(new_dir)
@@ -1311,41 +1138,25 @@ def graphs_to_slides(project_id, export_location, graph_dir, template_name):
     prs.save(upload_path)
     
 
-def create_all_slides(param_dict, export_location, graph_dir, template_name):
-    """
-    """
+def create_all_slides(param_dict, slides_dir, graph_dir, template_name):
+    """Updates slides for each model that has been run"""
     for project_id in param_dict.keys():
-        graphs_to_slides(project_id, export_location, graph_dir, template_name)
+        graphs_to_slides(project_id, slides_dir, graph_dir, template_name)
 
 # Section 14:    
-def update_param_user_all(deterministic_dict, probabilistic_dict, param_user_all, param_user):
-    """Puts the new values for lives_touched and lives_improved (including the
-       95% confidence interval upper and lower bounds)
-       Inputs:
-           deterministic_dict - a dictionary where keys are id_codes and values
-               are dfs where one of the indexes is 'base' and columns are 
-               'lives_touched' and 'lives_improved'
-           probabilistic_dict - a dictionary where keys are id_codes and values
-               are dfs where columns are 'lives_touched' and 'lives_improved'
-           param_user_all - a df where indexes are id_codes 
-    """
-    for code in param_user.keys():
-        determ_df = deterministic_dict[code]
-        prob_df = probabilistic_dict[code]
-        param_user_all.loc[code, 'lives_touched'] = determ_df.loc['base', 'lives_touched']
-        param_user_all.loc[code, 'lives_improved'] = determ_df.loc['base', 'lives_improved']
-        param_user_all.loc[code, 'lives_touched_025'] = prob_df['lives_touched'].quantile(0.025)
-        param_user_all.loc[code, 'lives_touched_975'] = prob_df['lives_touched'].quantile(0.975)
-        param_user_all.loc[code, 'lives_improved_025'] = prob_df['lives_improved'].quantile(0.025)
-        param_user_all.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
-    return param_user_all
 
-def export_estimates(param_user_all, analysis_type, backup_dir, outputs_dir):
-    """Overwrite the main csv with the updated version of estimates / paramters
+
+def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, estimates_csv_name):
+    """Overwrite the output csv with the updated estimates
        Inputs:
            param_user_all - a df of parameters and estimates
+           analysis_type - a dict - keys are analysis options and values are 
+               parameters, requires key for 'overwrite_estimates'
+           backup_dir - str - a file path where backups of parameters should be written
+           outputs_dir - str - a file path where output estimates should be written
+           estimates_csv_name - str - the name of the output csv
        Writes:
-           csvs to two different locations
+           csvs to in the backup_dir and outputs_dir
     """
     # TODO Make sure these draw in the previous estimates and only update the relevant
     # ones that have been run
@@ -1356,18 +1167,17 @@ def export_estimates(param_user_all, analysis_type, backup_dir, outputs_dir):
     param_user_all.to_csv(back_up_path)
     # Overwrite imported csv
     if analysis_type['overwrite_estimates']:
-        output_path = os.path.join(outputs_dir, 'LTLI_outputs.csv')
+        output_path = os.path.join(outputs_dir, estimates_csv_name)
         param_user_all.to_csv(output_path)
 
 # Section 15:    
 # Code run sequentially
-def main():
-    pass
-
 if __name__ == "__main__":
    
-    # Loads in the relevant model parameters
+    # Loads the relevant model parameters
     param_user_all = model_inputs.load_params(param_csv_name, data_dir)
+    estimates_output = model_inputs.load_params(estimates_csv_name, outputs_dir)
+    
     
     # Transforms the parameters to a dict for future transformation
     param_user_dict = model_inputs.create_param_dict(param_user_all)
@@ -1393,7 +1203,7 @@ if __name__ == "__main__":
                                            param_user_dict)
     
     # Clear any previous exception comments for projects that are being modelled
-    param_user_all = clear_exceptions(param_user_all, param_user)
+    estimates_output = clear_exceptions(param_user_all, param_user)
     
     # Create different versions of the parameters ready for sensitivity analyses
     deterministic_dict = get_deterministic_params(analysis_type, param_user)
@@ -1433,8 +1243,8 @@ if __name__ == "__main__":
                                                           param_dict)
     
     # Apply various geographical exceptions see the updated
-    cov_pop_burden_dict = apply_geography_exceptions(cov_pop_burden_dict, 
-                                                     param_user_all)
+    cov_pop_burden_dict = apply_exceptions.apply_geography_exceptions(cov_pop_burden_dict, 
+                                                                      estimates_output)
     
     # Calculate lives_touched and input them to 
     param_dict = update_lives_touched(cov_pop_burden_dict, param_dict)
@@ -1467,13 +1277,13 @@ if __name__ == "__main__":
                       ppt_template_name)
     
     # Update param_user_all ready for export
-    param_user_all = update_param_user_all(deterministic_dict, 
+    estimates_output = update_estimates_output(deterministic_dict, 
                                            probabilistic_dict, 
                                            param_user_all,
                                            param_user)
-    export_estimates(param_user_all, analysis_type, backup_dir, outputs_dir)
+    export_estimates(estimates_output, 
+                     analysis_type, 
+                     backup_dir, 
+                     outputs_dir, 
+                     estimates_csv_name)
     
-    main()
-
-    
-# Write in corrections so therapeutic mental health can pull in the right coverage buckets
