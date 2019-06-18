@@ -29,7 +29,8 @@ from probability_distribution_moments import gamma_moments
 from probability_distribution_moments import gamma_moments_burden
 import apply_exceptions
 import graph
-
+import reshape_for_graphs
+import exports
 
 # Set up directories, file names and analysis type
 data_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
@@ -47,8 +48,8 @@ coverage_sheet_name = 'Penetration assumptions'
 ppt_template_name = 'mm_template_impact.pptx'
 
 analysis_type = {'run_all' : False, # True or False
-                 'run_deterministic' : True, # True or False
-                 'run_probabilistic' : True, # True or False
+                 'run_deterministic' : True, # True or False TODO write in functionality to stop it running
+                 'run_probabilistic' : True, # True or False TODO write in functionality to stop it running
                  'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
                  'overwrite_estimates' : True # True or False
                   } 
@@ -62,13 +63,15 @@ analysis_type = {'run_all' : False, # True or False
 # Declaring all the functions used in the script
 
 def clear_exceptions(estimates_output, param_dict):
-    """
+    """Clears exceptions column of estimates_output df for all models that are 
+       going to be run (this is needed because the str defining exceptions get 
+       concatenated)
     """
     estimates_output = estimates_output.copy()
     for code in param_dict.keys():
         estimates_output.loc[code, 'exception_count'] = 0
         estimates_output.loc[code, 'exception_comment'] = '.'
-    return(estimates_output)
+    return estimates_output
 
 # Section 5:
 def lists_to_dict(list_keys, list_values):
@@ -820,185 +823,6 @@ def update_lives_improved(param_dict):
     return param_dict
 
 # Section 11:
-def isolate_deterministic_rows(param_df):
-    """Filter dfs by whether the index is text (signifying a deterministic scenario)
-       Inputs:
-           param_df - a df of paramters where the indexes are strings for 
-               deterministic scenarios and numbers for probabilistic trials
-       Returns:
-           a filtered df where all the data is for deterministic scenarios
-    """
-    param_determ_df = param_df.loc[param_df.index.str.contains('[a-z]', na=False)].copy()
-    return param_determ_df
-
-def isolate_probabilistic_rows(param_df, analysis_type):
-    """Filter dfs by whether the index is a number in the range 1:num_trials
-       (signifying a probabilistic trial)
-       Inputs:
-           param_df - a df of paramters where the indexes are strings for 
-               deterministic scenarios and numbers for probabilistic trials
-       Returns:
-           a filtered df where all the data is for probabilistic trials      
-    """
-    num_trials = analysis_type['num_trials']
-    param_prob_df = param_df.loc[param_df.index.isin(range(1,num_trials+1))].copy()
-    return param_prob_df
-
-def separate_param_dict(param_dict, analysis_type):
-    """Creates a dictionary of two dictionaries, one for deterministic scenarios
-       and another for probabilistic trials
-       Inputs:
-           param_dict - a dict where keys are id_codes and values are dfs
-       Returns:
-           a dict of two dicts 
-    """
-    deterministic_dict = {k: isolate_deterministic_rows(v) 
-                          for k, v in param_dict.items()}
-    probabilistic_dict = {k: isolate_probabilistic_rows(v, analysis_type) 
-                          for k, v in param_dict.items()}
-    return {'det': deterministic_dict, 'prob': probabilistic_dict}
-
-# Section 12:
-
-def restructure_graph_data_deterministic(param_df, variable):
-    """Restructures data to the form needed by the tornado diagram
-       Inputs:
-           param_df - a df that must have indexes representing the different
-               deterministic scenarios being modelled
-           variable - str - the name of the variable to be plotted on the x axis
-               normally either lives touched or lives improved
-       Returns:
-           base - float -  the base case estimate for the variable
-           graph_data - a df in the format needed for tornado_matplotlib()
-    """
-    base = param_df.loc['base', variable]
-    lower_series = param_df[param_df.index.str.contains('lower')][variable]
-    lower_series.name = 'lower'
-    lower_series.index = [re.sub('_lower', '', index) 
-                          for index in lower_series.index]
-    upper_series = param_df[param_df.index.str.contains('upper')][variable]
-    upper_series.name = 'upper'
-    upper_series.index = [re.sub('_upper', '', index) 
-                          for index in upper_series.index]
-    graph_data = pd.concat([upper_series, lower_series], axis = 1)
-    graph_data['ranges'] = abs(graph_data['upper'] - graph_data['lower'])
-    graph_data['variables'] = graph_data.index
-    graph_data = graph_data[graph_data['ranges']>0]
-    graph_data.index = range(len(graph_data.index))
-    return base, graph_data
-
-
-def vaccine_bridge_adjustments(cov_pop_burden_df, intervention_cut):
-    """Calculates the remainder of people included at each model stage and returns
-       the stage names and that remainder
-    """
-    cov_pop_burden_df['birth_cohort_endem'] = np.where(cov_pop_burden_df['coverage']>0.01,
-                                                 cov_pop_burden_df['target_pop'],
-                                                 0)
-    cov_pop_burden_df['lives_touched_base'] = (
-            cov_pop_burden_df['birth_cohort_endem']
-            *cov_pop_burden_df['prob_cover'] * 
-            cov_pop_burden_df['coverage'] / 
-            intervention_cut)
-    # Aggregate the columns to make a relevant for the graph
-    stage = ['Total birth cohort', 'Birth cohort in\nendemic countries', 
-              'Expected lives touched\nfor a base vaccine\nin endemic countries',
-              'Lives touched', 'Lives improved']
-    remainder = [cov_pop_burden_df['target_pop'].sum(), 
-                 cov_pop_burden_df['birth_cohort_endem'].sum(),
-                 cov_pop_burden_df['lives_touched_base'].sum(),
-                 cov_pop_burden_df['lives_touched'].sum(),
-                 cov_pop_burden_df['lives_improved'].sum()
-                ]
-    return stage, remainder
-
-def diagnostic_bridge_adjustments(cov_pop_burden_df, intervention_cut):
-    """Calculates the remainder of people included at each model stage and returns
-       the stage names and that remainder
-    """
-    stage = ['Total patient pool', 'Relevant patient pool', 
-             'Target diagnostic pool',
-             'Expected lives touched\nfor a base diagnostic',
-             'Lives touched', 'Lives improved']
-    remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
-                 cov_pop_burden_df['incidence_number'].sum(),
-                 cov_pop_burden_df['target_pop'].sum(),
-                 cov_pop_burden_df['lives_touched_base'].sum(),
-                 cov_pop_burden_df['lives_touched'].sum(),
-                 cov_pop_burden_df['lives_improved'].sum()]  
-    return stage, remainder
-
-def therapeutic_bridge_adjustments(cov_pop_burden_df, intervention_cut):
-    """Calculates the remainder of people included at each model stage and returns
-       the stage names and that remainder
-    """
-    stage = ['Total patient pool', 'Relevant patient pool', 
-         'Expected lives touched\nfor a base therapeutic',
-         'Lives touched', 'Lives improved']
-    remainder = [cov_pop_burden_df['naive_incidence_number'].sum(), 
-                 cov_pop_burden_df['target_pop'].sum(),
-                 cov_pop_burden_df['lives_touched_base'].sum(),
-                 cov_pop_burden_df['lives_touched'].sum(),
-                 cov_pop_burden_df['lives_improved'].sum()]
-    return stage, remainder
-
-
-def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_user_dict):
-    """Restructures data from various model stages into a form suitable for the bridging chart
-       Inputs:
-           base_cov_pop_burden_dict - 
-           burden_dict_unadjusted - 
-           param_user_dict - 
-       Returns:
-           a dict - keys are strings (id_code), values are dfs with the 
-               columns stage, adjustment and remainder
-    """
-    bridge_data_dict = {}
-    for code in base_cov_pop_burden_dict.keys():
-        intervention_type = param_user_dict[code]['intervention_type']
-        intervention_cut = param_user_dict[code]['intervention_cut_mean']
-        burden_df_unadjusted = burden_dict_unadjusted[code]        
-        cov_pop_burden_df = base_cov_pop_burden_dict[code]
-        # Create these columns because they are the same across modalities
-        cov_pop_burden_df['naive_incidence_number'] = (
-                aggregate_burden_df(burden_df_unadjusted)['incidence_number_mean']
-                                                      )
-        cov_pop_burden_df['lives_touched_base'] = (
-                cov_pop_burden_df['target_pop'] * 
-                cov_pop_burden_df['prob_cover'] * 
-                cov_pop_burden_df['coverage'] / 
-                intervention_cut)
-        
-        cov_pop_burden_df['lives_touched'] = (
-                cov_pop_burden_df['lives_touched_base'] * 
-                intervention_cut)
-        
-        cov_pop_burden_df['lives_improved'] = (
-                cov_pop_burden_df['lives_touched'] * 
-                param_user_dict[code]['efficacy_mean'])
-        
-        if intervention_type == 'Vaccine':
-            # Create vaccine specific columns
-            stage, remainder = vaccine_bridge_adjustments(cov_pop_burden_df, 
-                                                          intervention_cut)
-        elif intervention_type == 'Diagnostic':
-            # Aggregate the columns to make a relevant for the graph
-            stage, remainder = diagnostic_bridge_adjustments(cov_pop_burden_df, 
-                                                             intervention_cut)
-        elif re.search('Therapeutic', intervention_type):
-            # Aggregate the columns to make a relevant for the graph
-            stage, remainder = therapeutic_bridge_adjustments(cov_pop_burden_df, 
-                                                              intervention_cut)
-        else:
-            raise ValueError(intervention_type+' is not a recognised intervention_type')
-        
-        # Calculate the adjustment based on the remainder at each stage
-        adjustment = [0]+[remainder[i]-remainder[i+1] for i in range(len(remainder)-1)]
-        bridge_graph_df = pd.DataFrame({'stage':stage, 
-                                        'adjustment':adjustment, 
-                                        'remainder':remainder})
-        bridge_data_dict[code] = bridge_graph_df
-    return(bridge_data_dict)
 
 def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_output, param_user):
     """Updates estimates_output with new values for lives_touched and lives_improved 
@@ -1025,150 +849,7 @@ def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_ou
         estimates_output.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
     return estimates_output
 
-def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict, graph_dir):
-    """Writes graphs to graph_dir based on the data it is given
-           Inputs:
-               probabilistic_dict - dict - keys are codes and values are dfs
-                   of trial parameters and estimates
-               deterministic_dict - dict - keys are codes and values are dfs
-                   of scenario parameters and estimates
-               graph_dir - str - the directory where graphs should be exported
-           Writes:
-               5 graphs for each code to graph_dir
-    """
-    for code in probabilistic_dict.keys():
-        graph_data = probabilistic_dict[code]
-        variable = 'lives_touched'
-        file_name = code + '_probabilistic_' + variable
-        graph.probability_histogram(graph_data, variable, graph_dir, file_name)
-        variable = 'lives_improved'
-        file_name = code+'_probabilistic_'+variable
-        graph.probability_histogram(graph_data, variable, graph_dir, file_name)
-    
-    for code in deterministic_dict.keys():
-        param_df = deterministic_dict[code]
-        variable = 'lives_touched'
-        base, graph_data = restructure_graph_data_deterministic(param_df, variable)
-        file_name = code+'_deterministic_'+variable
-        graph.tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
-        variable = 'lives_improved'
-        base, graph_data = restructure_graph_data_deterministic(param_df, variable)
-        file_name = code+'_deterministic_'+variable
-        graph.tornado_matplotlib(graph_data, base, graph_dir, file_name, variable)
-    
-    for code in bridge_graph_dict.keys():
-        file_name = code+'_bridge_graph'
-        graph_data = bridge_graph_dict[code]
-        graph.bridge_plot(graph_data, graph_dir, file_name)
 
-# Section 13:
-def graphs_to_slides(project_id, slides_dir, graph_dir, template_name):
-    """Imports the Monday Meeting ppt template and adds graphs for a given project 
-       creates a new dir in slides_dir for a new project and writes ppt there
-       Inputs:
-           project_id - str - an id_code for a model that has been run
-           slides_dir - str - a directory to write the formatted ppt
-           graph_dir - str - a directory where the graphs are saved
-           template_name - str - the file name for the MM template ppt
-       Writes:
-           creates a directory in slides_dir and uploads a ppt file there
-    """
-    template_location = os.path.join(graph_dir, template_name)
-    prs = Presentation(template_location)
-        
-    main_slide = prs.slides[0]
-    
-    bridge_path = os.path.join(graph_dir,project_id + '_bridge_graph.png')
-    bridge_box = main_slide.shapes[5]
-    bridge_top = bridge_box.top-10000
-    bridge_left = bridge_box.left-10000
-    main_slide.shapes.add_picture(bridge_path, 
-                                  top = bridge_top, 
-                                  left = bridge_left)
-    
-    lt_appendix_slide = prs.slides[1]
-    
-    lt_tornado_path = os.path.join(graph_dir, 
-                                   project_id + '_deterministic_lives_touched.png')
-    lt_tornado_box = lt_appendix_slide.shapes[5]
-    lt_tornado_top = lt_tornado_box.top
-    lt_tornado_left = lt_tornado_box.left-10000
-    lt_appendix_slide.shapes.add_picture(lt_tornado_path, 
-                                         top = lt_tornado_top, 
-                                         left = lt_tornado_left)
-    
-    lt_histogram_path = os.path.join(graph_dir, 
-                                     project_id + '_probabilistic_lives_touched.png')
-    lt_histogram_box = lt_appendix_slide.shapes[6]
-    lt_histogram_top = lt_histogram_box.top
-    lt_histogram_left = lt_histogram_box.left
-    lt_appendix_slide.shapes.add_picture(lt_histogram_path, 
-                                         top = lt_histogram_top, 
-                                         left = lt_histogram_left)
-    
-    li_appendix_slide = prs.slides[2]
-    
-    li_tornado_path = os.path.join(graph_dir, 
-                                   project_id + '_deterministic_lives_improved.png')
-    li_tornado_box = li_appendix_slide.shapes[5]
-    li_tornado_top = li_tornado_box.top
-    li_tornado_left = li_tornado_box.left-10000
-    li_appendix_slide.shapes.add_picture(li_tornado_path, 
-                                         top = li_tornado_top, 
-                                         left = li_tornado_left)
-    
-    li_histogram_path = os.path.join(graph_dir, 
-                                     project_id + '_probabilistic_lives_improved.png')
-    li_histogram_box = li_appendix_slide.shapes[6]
-    li_histogram_top = li_histogram_box.top-5000
-    li_histogram_left = li_histogram_box.left
-    li_appendix_slide.shapes.add_picture(li_histogram_path, 
-                                         top = li_histogram_top, 
-                                         left = li_histogram_left)
-    
-    new_dir = os.path.join(slides_dir, project_id)
-    
-    try:
-        os.mkdir(new_dir)
-    except FileExistsError:
-        pass
-    
-    upload_path = os.path.join(new_dir+'/', 
-                               project_id + '_mm_impact_charts.pptx')
-    prs.save(upload_path)
-    
-
-def create_all_slides(param_dict, slides_dir, graph_dir, template_name):
-    """Updates slides for each model that has been run"""
-    for project_id in param_dict.keys():
-        graphs_to_slides(project_id, slides_dir, graph_dir, template_name)
-
-# Section 14:    
-
-
-def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, estimates_csv_name):
-    """Overwrite the output csv with the updated estimates
-       Inputs:
-           param_user_all - a df of parameters and estimates
-           analysis_type - a dict - keys are analysis options and values are 
-               parameters, requires key for 'overwrite_estimates'
-           backup_dir - str - a file path where backups of parameters should be written
-           outputs_dir - str - a file path where output estimates should be written
-           estimates_csv_name - str - the name of the output csv
-       Writes:
-           csvs to in the backup_dir and outputs_dir
-    """
-    # TODO Make sure these draw in the previous estimates and only update the relevant
-    # ones that have been run
-    # Write back up csv
-    time_now = datetime.datetime.now()
-    data_str = time_now.strftime('%Y_%m_%d_%H_%M')
-    back_up_path = os.path.join(backup_dir, 'LTLI_parameters_python_' + data_str + '.csv')
-    param_user_all.to_csv(back_up_path)
-    # Overwrite imported csv
-    if analysis_type['overwrite_estimates']:
-        output_path = os.path.join(outputs_dir, estimates_csv_name)
-        param_user_all.to_csv(output_path)
 
 # Section 15:    
 # Code run sequentially
@@ -1252,7 +933,7 @@ if __name__ == "__main__":
     param_dict = update_lives_improved(param_dict)
     
     # Separate param dict into seperate dicts for further analyis
-    param_dict_separated = separate_param_dict(param_dict, analysis_type)
+    param_dict_separated = reshape_for_graphs.separate_param_dict(param_dict, analysis_type)
     deterministic_dict = param_dict_separated['det']
     probabilistic_dict = param_dict_separated['prob']
     
@@ -1260,28 +941,28 @@ if __name__ == "__main__":
     base_cov_pop_burden_dict = {k: cov_pop_burden_dict[k]['base']
                                 for k in cov_pop_burden_dict.keys()}
     
-    bridge_graph_dict = get_bridging_data(base_cov_pop_burden_dict, 
-                                          burden_dict_unadjusted,
-                                          param_user_dict)
+    bridge_graph_dict = reshape_for_graphs.get_bridging_data(base_cov_pop_burden_dict, 
+                                                             burden_dict_unadjusted,
+                                                             param_user_dict)
     
     # Export graphs for all of the analyses
-    draw_graphs_export(probabilistic_dict,
+    exports.draw_graphs_export(probabilistic_dict,
                        deterministic_dict, 
                        bridge_graph_dict, 
                        graph_dir)
     
     # Turn the graphs into formatted slides
-    create_all_slides(param_dict, 
+    exports.create_all_slides(param_dict, 
                       slides_dir, 
                       graph_dir, 
                       ppt_template_name)
     
     # Update param_user_all ready for export
-    estimates_output = update_estimates_output(deterministic_dict, 
+    estimates_output = exports.update_estimates_output(deterministic_dict, 
                                            probabilistic_dict, 
                                            param_user_all,
                                            param_user)
-    export_estimates(estimates_output, 
+    exports.export_estimates(estimates_output, 
                      analysis_type, 
                      backup_dir, 
                      outputs_dir, 
