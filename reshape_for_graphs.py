@@ -8,7 +8,7 @@ Created on Tue Jun 18 11:38:34 2019
 import pandas as pd
 import numpy as np
 import re
-from lives_touched_lives_improved import aggregate_burden_df
+from restructure_cov_pop_burden import aggregate_burden_df
 
 def isolate_deterministic_rows(param_df):
     """Filter dfs by whether the index is text (signifying a deterministic scenario)

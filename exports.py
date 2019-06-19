@@ -129,6 +129,30 @@ def create_all_slides(param_dict, slides_dir, graph_dir, template_name):
         graphs_to_slides(project_id, slides_dir, graph_dir, template_name)
 
 # Section 14:    
+def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_output, param_user):
+    """Updates estimates_output with new values for lives_touched and lives_improved 
+       (including the 95% confidence interval upper and lower bounds)
+       Inputs:
+           deterministic_dict - a dictionary where keys are id_codes and values
+               are dfs where one of the indexes is 'base' and columns are 
+               'lives_touched' and 'lives_improved'
+           probabilistic_dict - a dictionary where keys are id_codes and values
+               are dfs where columns are 'lives_touched' and 'lives_improved'
+           estimates_output - a df where indexes are id_codes 
+           param_user - dict - keys are id_codes for only the models that have been run
+       Returns:
+           a df updated with estimates
+    """
+    for code in param_user.keys():
+        determ_df = deterministic_dict[code]
+        prob_df = probabilistic_dict[code]
+        estimates_output.loc[code, 'lives_touched'] = determ_df.loc['base', 'lives_touched']
+        estimates_output.loc[code, 'lives_improved'] = determ_df.loc['base', 'lives_improved']
+        estimates_output.loc[code, 'lives_touched_025'] = prob_df['lives_touched'].quantile(0.025)
+        estimates_output.loc[code, 'lives_touched_975'] = prob_df['lives_touched'].quantile(0.975)
+        estimates_output.loc[code, 'lives_improved_025'] = prob_df['lives_improved'].quantile(0.025)
+        estimates_output.loc[code, 'lives_improved_975'] = prob_df['lives_improved'].quantile(0.975)
+    return estimates_output
 
 
 def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, estimates_csv_name):

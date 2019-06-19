@@ -8,6 +8,17 @@ Created on Tue Jun 18 08:53:02 2019
 import numpy as np
 import pandas as pd
 
+def clear_exceptions(estimates_output, param_dict):
+    """Clears exceptions column of estimates_output df for all models that are 
+       going to be run (this is needed because the str defining exceptions get 
+       concatenated)
+    """
+    estimates_output = estimates_output.copy()
+    for code in param_dict.keys():
+        estimates_output.loc[code, 'exception_count'] = 0
+        estimates_output.loc[code, 'exception_comment'] = '.'
+    return estimates_output
+
 def update_exceptions(estimates_output, code, new_comment):
     """Updates exception_count and exception comment columns of param_user for
        appropriate codes
