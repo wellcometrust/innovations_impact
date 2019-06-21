@@ -10,6 +10,7 @@ import numpy as np
 import re
 from probability_distribution_moments import gamma_moments_burden
 from scipy.stats import gamma
+from scipy.stats import norm
 
 def get_relevant_burden(param_dict, burden_all):
     """Return a dict of burden data frames with the relevant conditions isolated

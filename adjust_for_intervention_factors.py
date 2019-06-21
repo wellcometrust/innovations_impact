@@ -5,6 +5,9 @@ Created on Wed Jun 19 15:10:33 2019
 @author: LaurencT
 """
 
+import re
+import numpy as np
+
 def create_target_population(cov_pop_burden_df, param_df, index):
     """Adds a new column to cov_pop_burden_df which is the target population
        Inputs:

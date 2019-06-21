@@ -6,19 +6,9 @@ Lives touched, lives improved model
 
 @author: LaurencT
 """
-# Section 1 (see README for context)
-# Import all standardised libraries
+
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import norm
-from scipy.stats import gamma
-from scipy.stats import beta
-import re
-import datetime
-from pptx import Presentation
 import sys
-import os
 
 # Import other modules written for LTLI
 sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
@@ -37,24 +27,22 @@ import calculate_ltli
 import reshape_for_graphs
 import exports
 
-
-
 # Set up directories, file names and analysis type
-data_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
-graph_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
-outputs_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/outputs/'
-backup_dir = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/'
-slides_dir = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
+DATA_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
+GRAPH_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
+OUTPUTS_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/outputs/'
+BACKUP_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/'
+SLIDES_DIR = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
 
-param_csv_name = 'LTLI_parameters.csv'
-estimates_csv_name = 'LTLI_outputs.csv'
-population_csv_name = 'GBD_population_2016_reshaped.csv'
-burden_csv_name = 'gbd_data_wide_2017.csv'
-coverage_xls_name = 'intervention_coverage_assumptions.xlsm'
-coverage_sheet_name = 'Penetration assumptions'
-ppt_template_name = 'mm_template_impact.pptx'
+PARAM_CSV_NAME = 'LTLI_parameters.csv'
+ESTIMATES_CSV_NAME = 'LTLI_outputs.csv'
+POPULATION_CSV_NAME = 'GBD_population_2016_reshaped.csv'
+BURDEN_CSV_NAME = 'gbd_data_wide_2017.csv'
+COVERAGE_XLS_NAME = 'intervention_coverage_assumptions.xlsm'
+COVERAGE_SHEET_NAME = 'Penetration assumptions'
+PPT_TEMPLATE_NAME = 'mm_template_impact.pptx'
 
-analysis_type = {'run_all' : False, # True or False
+ANALYSIS_TYPE = {'run_all' : True, # True or False
                  'run_deterministic' : True, # True or False TODO write in functionality to stop it running
                  'run_probabilistic' : True, # True or False TODO write in functionality to stop it running
                  'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
@@ -65,23 +53,23 @@ analysis_type = {'run_all' : False, # True or False
 if __name__ == "__main__":
    
     # Loads the relevant model parameters
-    param_user_all = model_inputs.load_params(param_csv_name, data_dir)
-    estimates_output = model_inputs.load_params(estimates_csv_name, outputs_dir)
+    param_user_all = model_inputs.load_params(PARAM_CSV_NAME, DATA_DIR)
+    estimates_output = model_inputs.load_params(ESTIMATES_CSV_NAME, OUTPUTS_DIR)
     
     
     # Transforms the parameters to a dict for future transformation
     param_user_dict = model_inputs.create_param_dict(param_user_all)
     
-    population = model_inputs.load_population_data(population_csv_name, data_dir) 
+    population = model_inputs.load_population_data(POPULATION_CSV_NAME, DATA_DIR) 
     
-    burden_all = model_inputs.load_burden_data(burden_csv_name, data_dir)
+    burden_all = model_inputs.load_burden_data(BURDEN_CSV_NAME, DATA_DIR)
     
-    coverage = model_inputs.load_coverage_assumptions(coverage_xls_name,
-                                                      coverage_sheet_name,
-                                                      data_dir)
+    coverage = model_inputs.load_coverage_assumptions(COVERAGE_XLS_NAME,
+                                                      COVERAGE_SHEET_NAME,
+                                                      DATA_DIR)
 
     # Write in a parameter checking function as the first function
-    input_check.check_inputs(analysis_type, 
+    input_check.check_inputs(ANALYSIS_TYPE, 
                              param_user_all, 
                              population, 
                              coverage, 
@@ -89,12 +77,12 @@ if __name__ == "__main__":
     
     # Vary the parameter dict depending on whether you are running all the analysis
     # or just a subset
-    param_user = input_check.check_run_all(analysis_type, 
+    param_user = input_check.check_run_all(ANALYSIS_TYPE, 
                                            param_user_dict)
         
     # Create different versions of the parameters ready for sensitivity analyses
-    deterministic_dict = get_deterministic_params(analysis_type, param_user)
-    probabilistic_dict = get_probabilistic_params(analysis_type, param_user)
+    deterministic_dict = get_deterministic_params(ANALYSIS_TYPE, param_user)
+    probabilistic_dict = get_probabilistic_params(ANALYSIS_TYPE, param_user)
     
     # Combine into one dict
     param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
@@ -142,7 +130,7 @@ if __name__ == "__main__":
     param_dict = calculate_ltli.update_lives_improved(param_dict)
     
     # Separate param dict into seperate dicts for further analyis
-    param_dict_separated = reshape_for_graphs.separate_param_dict(param_dict, analysis_type)
+    param_dict_separated = reshape_for_graphs.separate_param_dict(param_dict, ANALYSIS_TYPE)
     deterministic_dict = param_dict_separated['det']
     probabilistic_dict = param_dict_separated['prob']
     
@@ -158,22 +146,23 @@ if __name__ == "__main__":
     exports.draw_graphs_export(probabilistic_dict,
                        deterministic_dict, 
                        bridge_graph_dict, 
-                       graph_dir)
+                       GRAPH_DIR)
     
     # Turn the graphs into formatted slides
     exports.create_all_slides(param_dict, 
-                      slides_dir, 
-                      graph_dir, 
-                      ppt_template_name)
+                      SLIDES_DIR, 
+                      GRAPH_DIR, 
+                      PPT_TEMPLATE_NAME)
     
     # Update param_user_all ready for export
     estimates_output = exports.update_estimates_output(deterministic_dict, 
-                                           probabilistic_dict, 
-                                           param_user_all,
-                                           param_user)
+                                                       probabilistic_dict, 
+                                                       param_user_all,
+                                                       param_user)
+    
     exports.export_estimates(estimates_output, 
-                     analysis_type, 
-                     backup_dir, 
-                     outputs_dir, 
-                     estimates_csv_name)
+                             ANALYSIS_TYPE, 
+                             BACKUP_DIR, 
+                             OUTPUTS_DIR, 
+                             ESTIMATES_CSV_NAME)
 
