@@ -11,7 +11,6 @@ import pandas as pd
 from argparse import ArgumentParser
 import sys
 
-
 # Import other modules written for LTLI
 sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
 import model_inputs
@@ -44,11 +43,9 @@ COVERAGE_XLS_NAME = 'intervention_coverage_assumptions.xlsm'
 COVERAGE_SHEET_NAME = 'Penetration assumptions'
 PPT_TEMPLATE_NAME = 'mm_template_impact.pptx'
 
-ANALYSIS_TYPE = {'run_all' : True, # True or False
-                 'run_deterministic' : True, # True or False TODO write in functionality to stop it running
-                 'run_probabilistic' : True, # True or False TODO write in functionality to stop it running
-                 'num_trials' : 1000, # 1000 as standard - could do 100 to speed up
-                 'overwrite_estimates' : True # True or False
+ANALYSIS_TYPE = {'run_all' : False, # True or False - do you just want to run one model or all of them
+                 'num_trials' : 1000, # 1000 as standard - could do fewer to speed up
+                 'overwrite_estimates' : True # True or False - do you want 
                   } 
 
 parser = ArgumentParser(description = 'Input strings to override the default ' +
@@ -222,7 +219,7 @@ if __name__ == "__main__":
                                                           param_dict)
     
     # Clear any previous exception comments for projects that are being modelled
-    estimates_output = apply_exceptions.clear_exceptions(param_user_all, param_user)
+    estimates_output = apply_exceptions.clear_exceptions(estimates_output, param_user)
     
     # Apply various geographical exceptions see the updated
     cov_pop_burden_dict = apply_exceptions.apply_geography_exceptions(cov_pop_burden_dict, 
@@ -261,7 +258,7 @@ if __name__ == "__main__":
     # Update param_user_all ready for export
     estimates_output = exports.update_estimates_output(deterministic_dict, 
                                                        probabilistic_dict, 
-                                                       param_user_all,
+                                                       estimates_output,
                                                        param_user)
     
     exports.export_estimates(estimates_output, 

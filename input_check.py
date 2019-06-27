@@ -18,13 +18,11 @@ def check_analysis_type(analysis_type):
     """
     # Take out the values that are supposed to be bools
     analysis_values = [analysis_type['run_all'], 
-                       analysis_type['run_deterministic'],
-                       analysis_type['run_probabilistic'],
                        analysis_type['overwrite_estimates']]
     # Test to see if they are bools
     for value in analysis_values:
         if not type(value) is bool:
-            raise ValueError('all of the run_... parameters in analysis type should be booleans')
+            raise ValueError('all of the run_... parameters in analysis_type should be booleans')
     # Test to make sure num trials is an int
     if not type(analysis_type['num_trials']) is int:
         raise ValueError('the number of trials has to be an integer')
