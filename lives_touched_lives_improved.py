@@ -43,10 +43,10 @@ COVERAGE_XLS_NAME = 'intervention_coverage_assumptions.xlsm'
 COVERAGE_SHEET_NAME = 'Penetration assumptions'
 PPT_TEMPLATE_NAME = 'mm_template_impact.pptx'
 
-ANALYSIS_TYPE = {'run_all' : False, # True or False - do you just want to run one model or all of them
+ANALYSIS_TYPE = {'run_all' : False, # True if you just want to run all the models or False to run one model 
                  'num_trials' : 1000, # 1000 as standard - could do fewer to speed up
-                 'overwrite_estimates' : True # True or False - do you want 
-                  } 
+                 'overwrite_estimates' : True # True or False - do you want to overwrite the estimates linked to Tableau
+                  }
 
 parser = ArgumentParser(description = 'Input strings to override the default ' +
                         'folder locations required to get data and write outputs')
@@ -190,6 +190,8 @@ if __name__ == "__main__":
     # Combine all parameters into one dict
     param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
                   for k in deterministic_dict.keys()}
+    
+    print('All the parameters have been simulated')
         
     # Get the disease burden data for each set of parameters
     burden_dict_unadjusted = get_relevant_burden(param_dict, burden_all)
@@ -213,6 +215,8 @@ if __name__ == "__main__":
     cov_pop_burden_dict = merge_cov_pop_and_burden(burden_dict, 
                                                    cov_pop_dict)
     
+    print('All the datasets have been simulated based on the parameters')
+    
     # Adjust the dfs in cov_pop_burden_dict for intervention factors such as the 
     # endemicity threshold, diagnostic inflation and intervention cut
     cov_pop_burden_dict = adjust_for_intervention_factors(cov_pop_burden_dict, 
@@ -229,6 +233,8 @@ if __name__ == "__main__":
     param_dict = calculate_ltli.update_lives_touched(cov_pop_burden_dict, param_dict)
     
     param_dict = calculate_ltli.update_lives_improved(param_dict)
+    
+    print('All the estimates have been completed')
     
     # Separate param dict into seperate dicts for further analyis
     param_dict_separated = reshape_for_graphs.separate_param_dict(param_dict, ANALYSIS_TYPE)
@@ -267,3 +273,4 @@ if __name__ == "__main__":
                              OUTPUTS_DIR, 
                              ESTIMATES_CSV_NAME)
 
+    print('All the exports have been completed, the entire process is complete')

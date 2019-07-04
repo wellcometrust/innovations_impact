@@ -64,7 +64,7 @@ def graphs_to_slides(project_id, slides_dir, graph_dir, template_name):
     main_slide = prs.slides[0]
     
     bridge_path = os.path.join(graph_dir,project_id + '_bridge_graph.png')
-    bridge_box = main_slide.shapes[5]
+    bridge_box = main_slide.shapes[4]
     bridge_top = bridge_box.top-10000
     bridge_left = bridge_box.left-10000
     main_slide.shapes.add_picture(bridge_path, 

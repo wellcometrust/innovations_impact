@@ -25,7 +25,7 @@ def check_analysis_type(analysis_type):
             raise ValueError('all of the run_... parameters in analysis_type should be booleans')
     # Test to make sure num trials is an int
     if not type(analysis_type['num_trials']) is int:
-        raise ValueError('the number of trials has to be an integer')
+        raise ValueError('the number of trialsin analysis_type has to be an integer')
 
 def check_indexes(param_user_all):
     """Checks to ensure all of the id_codes for each separate analysis are unique
@@ -34,7 +34,7 @@ def check_indexes(param_user_all):
     """
     indexes = param_user_all.index.tolist()
     if len(set(indexes)) < len(indexes):
-        raise ValueError('id_codes should be unique, please ensure there are no duplicate id codes in the parameters csv')
+        raise ValueError('id_codes should be unique, please ensure there are no duplicate id codes in the LTLI_parameters.csv')
 
 def check_columns(param_user_all):
     """Checks to ensure all of the required column names are contained in the 
@@ -69,7 +69,24 @@ def check_columns(param_user_all):
     necessary_columns_missing = [column for column in necessary_columns
                                  if column not in list(param_user_all) ]
     if len(necessary_columns_missing)>0:
-        raise ValueError('The following columns are missing from the parameter csv '+str(necessary_columns_missing))
+        raise ValueError('The following columns are missing from the LTLI_parameters.csv '+str(necessary_columns_missing))
+
+def check_not_negative(param_user_all):
+    """Checks to ensure all of the numerical parameters are non-negative
+       Inputs:
+           param_user_all - a df of parameters, some columns are numerical
+       Raises:
+           a value error if another of the parameter values are negative
+    """
+    column_roots = [re.sub('_mean', '', column)
+                    for column in param_user_all if re.search('mean', column)]
+    numerical_columns = [[column+'_mean', column+'_upper', column+'_lower', column+'_SD']
+                         for column in column_roots]
+    numerical_columns = [column for sublist in numerical_columns for column in sublist]
+    contains_negative = [any(param_user_all[column]<0) for column in numerical_columns]
+    if any(contains_negative):
+        negative_columns = np.array(numerical_columns)[np.array(contains_negative)]
+        raise ValueError('The following columns in LTLI_parameters.csv contain negative values and should not '+str(negative_columns))
 
 def check_iterable_1_not_smaller(iterable_1, iterable_2):
     """Checks two iterables of the same length for whether each element in 1
@@ -84,7 +101,7 @@ def check_iterable_1_not_smaller(iterable_1, iterable_2):
     if len(iterable_1) == len(iterable_2):
         bool_list = map(lambda x,y: x>=y, iterable_1, iterable_2)        
     else:
-        raise ValueError("the iterables must be the same length")
+        raise ValueError('the iterables must be the same length')
     return all(list(bool_list))
 
 def check_upper_lower(param_user_all):
@@ -101,11 +118,11 @@ def check_upper_lower(param_user_all):
         # Check upper >= mean
         if not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[0]],
                                             iterable_2 = param_user_all[mapping[1]]):
-            raise ValueError(mapping[1]+' is greater than '+mapping[0])            
+            raise ValueError(mapping[1]+' in LTLI_parameters.csv is greater than '+mapping[0])            
         # Check mean >= lower
         elif not check_iterable_1_not_smaller(iterable_1 = param_user_all[mapping[1]],
                                             iterable_2 = param_user_all[mapping[2]]):
-            raise ValueError(mapping[2]+' is greater than '+mapping[1])
+            raise ValueError(mapping[2]+' in LTLI_parameters.csv is greater than  '+mapping[1])
         # Upper>=lower by transitivity therefore is valid
         else:
             print('Values of '+mapping[0]+', '+mapping[1]+', '+mapping[2]+' are consistent')
@@ -119,7 +136,7 @@ def column_checker(column, ther_diag_param, correct_value):
            correct_value - a number that is the expected column value
     """
     if not all(v == correct_value for v in ther_diag_param[column]):
-        raise ValueError('Values in '+column+' should all be '+str(correct_value)+' for diagnostics and therapeutics')
+        raise ValueError('Values in '+column+' in LTLI_parameters.csv should all be '+str(correct_value)+' for diagnostics and therapeutics')
     
 def check_diag_ther(param_user_all):
     """Checks diagnostics and therapeutics to ensure they don't have incorrect 
@@ -164,7 +181,7 @@ def check_disease_selection(param_user_all, burden_all):
     for disease in disease_choices:
         if not disease in valid_diseases:
             #~ could write in a fuzzy lookup for potential valid names
-            raise ValueError(disease+' is not a valid disease name, please search XX for valid diseases')
+            raise ValueError(disease+' in LTLI_parameters.csv is not a valid disease name, please consult handover guidance for valid diseases')
 
 def check_burden(burden_all):
     """Checks to make sure all the column names in the burden data are consist
@@ -177,7 +194,7 @@ def check_burden(burden_all):
     expected_columns = ['age', 'super_region', 'region', 'country', 'cause']
     column_name_check = [column in list(burden_all) for column in expected_columns]
     if not all(column_name_check):
-        raise ValueError('check that age, country and cause are in burden all')
+        raise ValueError('check that age, country, region and super_region and cause columns are all in are in gbd_data_wide_2017.csv')
     pass #~write this in when analysis is written - see what columns are required
 
 def check_population(population):
@@ -193,7 +210,7 @@ def check_population(population):
         raise ValueError('The population df does not have the expected columns')
     # Check the index for country names
     elif 'France' not in population.index:
-        raise ValueError('The population df does not have countries as indexes')
+        raise ValueError('The population df does not have countries as indexes, ensure GBD_population_2016_reshaped has the column location_name')
     else:
         # do nothing because not problems
         pass 
@@ -212,10 +229,10 @@ def check_coverage(coverage):
     expected_names_missing = [name for name in expected_names
                               if name not in list(coverage)]
     if len(expected_names_missing)>0:
-        raise ValueError('The following columns are missing from the population df '+str(expected_names_missing))
+        raise ValueError('The following columns are missing from intervention_coverage_assumptions.csv '+str(expected_names_missing))
     # Check the index for country names
     elif 'France' not in coverage.index:
-        raise ValueError('The population df does not have countries as indexes')
+        raise ValueError('The coverage_df does not have countries as indexes, ensure intervention_coverage_assumptions.csv sheet Penetration Assumptions has a column called country')
     else:
         # do nothing because not problems
         pass 
@@ -234,6 +251,7 @@ def check_inputs(analysis_type, param_user_all, population, coverage, burden_all
     check_analysis_type(analysis_type)
     check_indexes(param_user_all)
     check_columns(param_user_all)
+    check_not_negative(param_user_all)
     check_upper_lower(param_user_all)
     check_diag_ther(param_user_all)
     check_disease_selection(param_user_all, burden_all)
