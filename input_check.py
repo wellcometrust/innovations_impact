@@ -183,6 +183,13 @@ def check_disease_selection(param_user_all, burden_all):
             #~ could write in a fuzzy lookup for potential valid names
             raise ValueError(disease+' in LTLI_parameters.csv is not a valid disease name, please consult handover guidance for valid diseases')
 
+def flatten(x):
+    """Flattens nested list"""
+    if isinstance(x, list):
+        return [a for i in x for a in flatten(i)]
+    else:
+        return [x]
+
 def check_burden(burden_all):
     """Checks to make sure all the column names in the burden data are consist
        ent with what are called in the later code
@@ -191,11 +198,28 @@ def check_burden(burden_all):
                they are 'measure_metric', there are columns for 'country', 
                'age', 'cause'
     """
+    # Specify necessary categorising columns
     expected_columns = ['age', 'super_region', 'region', 'country', 'cause']
-    column_name_check = [column in list(burden_all) for column in expected_columns]
-    if not all(column_name_check):
-        raise ValueError('check that age, country, region and super_region and cause columns are all in are in gbd_data_wide_2017.csv')
-    pass #~write this in when analysis is written - see what columns are required
+    
+    # Specify the different burden data columns expected
+    expected_burden_columns = ['dalys', 'deaths', 'incidence', 'prevalence']
+    expected_burden_columns = [[column+'_number', column+'_rate'] 
+                                for column in expected_burden_columns]
+    expected_burden_columns = flatten(expected_burden_columns)
+    expected_burden_columns = [[column+'_upper', column+'_mean', column+'_lower']
+                                for column in expected_burden_columns]
+    expected_burden_columns = flatten(expected_burden_columns)
+    
+    # Combine all the expected columns
+    all_expected_columns = expected_columns + expected_burden_columns
+    
+    # Generate TRUEs where they are missing
+    missing_column_bool = [column not in list(burden_all) for column in all_expected_columns]
+    if any(missing_column_bool):
+        missing_columns = np.array(all_expected_columns)[np.array(missing_column_bool)]
+        # Raise an error about missing necessary columns
+        raise ValueError(str(missing_columns)+' columns are missing from gbd_data_wide_2017.csv')
+    
 
 def check_population(population):
     """Checks to make sure all the column names and indexes in the population 
