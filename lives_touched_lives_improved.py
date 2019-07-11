@@ -49,33 +49,33 @@ ANALYSIS_TYPE = {'run_all' : False, # True if you just want to run all the model
                  'overwrite_estimates' : True # True or False - do you want to overwrite the estimates linked to Tableau
                   }
 
-
-args = ltli_argument_parser(DATA_DIR, GRAPH_DIR, OUTPUTS_DIR, BACKUP_DIR, SLIDES_DIR,
-                            PARAM_CSV_NAME, ESTIMATES_CSV_NAME, POPULATION_CSV_NAME,
-                            BURDEN_CSV_NAME, COVERAGE_XLS_NAME, COVERAGE_SHEET_NAME,
-                            PPT_TEMPLATE_NAME)
-
-DATA_DIR = args.DATA_DIR
-GRAPH_DIR = args.GRAPH_DIR
-OUTPUTS_DIR = args.OUTPUTS_DIR
-BACKUP_DIR = args.BACKUP_DIR
-SLIDES_DIR = args.SLIDES_DIR
-PARAM_CSV_NAME = args.PARAM_CSV_NAME
-ESTIMATES_CSV_NAME = args.ESTIMATES_CSV_NAME
-POPULATION_CSV_NAME = args.POPULATION_CSV_NAME
-BURDEN_CSV_NAME = args.BURDEN_CSV_NAME
-COVERAGE_XLS_NAME = args.COVERAGE_XLS_NAME
-COVERAGE_SHEET_NAME = args.COVERAGE_SHEET_NAME
-PPT_TEMPLATE_NAME = args.PPT_TEMPLATE_NAME
-
-print_selected_arguments(DATA_DIR, GRAPH_DIR, OUTPUTS_DIR, BACKUP_DIR, SLIDES_DIR,
-                         PARAM_CSV_NAME, ESTIMATES_CSV_NAME, POPULATION_CSV_NAME,
-                         BURDEN_CSV_NAME, COVERAGE_XLS_NAME, COVERAGE_SHEET_NAME,
-                         PPT_TEMPLATE_NAME)
-
 # Code run sequentially
 if __name__ == "__main__":
    
+    # Argument parser
+    args = ltli_argument_parser(DATA_DIR, GRAPH_DIR, OUTPUTS_DIR, BACKUP_DIR, SLIDES_DIR,
+                                PARAM_CSV_NAME, ESTIMATES_CSV_NAME, POPULATION_CSV_NAME,
+                                BURDEN_CSV_NAME, COVERAGE_XLS_NAME, COVERAGE_SHEET_NAME,
+                                PPT_TEMPLATE_NAME)
+
+    DATA_DIR = args.DATA_DIR
+    GRAPH_DIR = args.GRAPH_DIR
+    OUTPUTS_DIR = args.OUTPUTS_DIR
+    BACKUP_DIR = args.BACKUP_DIR
+    SLIDES_DIR = args.SLIDES_DIR
+    PARAM_CSV_NAME = args.PARAM_CSV_NAME
+    ESTIMATES_CSV_NAME = args.ESTIMATES_CSV_NAME
+    POPULATION_CSV_NAME = args.POPULATION_CSV_NAME
+    BURDEN_CSV_NAME = args.BURDEN_CSV_NAME
+    COVERAGE_XLS_NAME = args.COVERAGE_XLS_NAME
+    COVERAGE_SHEET_NAME = args.COVERAGE_SHEET_NAME
+    PPT_TEMPLATE_NAME = args.PPT_TEMPLATE_NAME
+    
+    print_selected_arguments(DATA_DIR, GRAPH_DIR, OUTPUTS_DIR, BACKUP_DIR, SLIDES_DIR,
+                             PARAM_CSV_NAME, ESTIMATES_CSV_NAME, POPULATION_CSV_NAME,
+                             BURDEN_CSV_NAME, COVERAGE_XLS_NAME, COVERAGE_SHEET_NAME,
+                             PPT_TEMPLATE_NAME)
+
     # Loads the relevant model parameters
     param_user_all = model_inputs.load_params(PARAM_CSV_NAME, DATA_DIR)
     estimates_output = model_inputs.load_params(ESTIMATES_CSV_NAME, OUTPUTS_DIR)
@@ -107,11 +107,11 @@ if __name__ == "__main__":
     # Create different versions of the parameters ready for sensitivity analyses
     deterministic_dict = get_deterministic_params(ANALYSIS_TYPE, param_user)
     probabilistic_dict = get_probabilistic_params(ANALYSIS_TYPE, param_user)
-    
+       
     # Combine all parameters into one dict
-    param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]])
+    param_dict = {k: pd.concat([deterministic_dict[k], probabilistic_dict[k]], sort = True)
                   for k in deterministic_dict.keys()}
-    
+        
     print('All the parameters have been simulated')
         
     # Get the disease burden data for each set of parameters

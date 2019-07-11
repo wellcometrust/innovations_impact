@@ -205,31 +205,37 @@ def create_coverage_population_dict(coverage, population, param_dict):
     for code in param_dict.keys():
         new_coverage = coverage.copy()
         population = population.copy()   
+        intervention_type = param_dict[code]['intervention_type'][0]
         # Select therapeutic coverage columns if it is a Therapeutic (therapeutic)
-        if param_dict[code]['intervention_type'][0] == 'Therapeutic':
+        if  intervention_type == 'Therapeutic':
             new_coverage = new_coverage[['country',
                                  'therapeutic_coverage', 
                                  'therapeutic_prob_cover']]
         # Select therapeutic mental health coverage columns if it is a therapeutic
         # for a mental health condition
-        elif param_dict[code]['intervention_type'][0] == 'Therapeutic mental health':
+        elif intervention_type == 'Therapeutic mental health':
             new_coverage = new_coverage[['country', 
                                  'therapeutic_mental_health_coverage', 
                                  'therapeutic_mental_health_prob_cover']]
-        # Select diagnostics coverage columns if it is a diagnostic
-        elif param_dict[code]['intervention_type'][0] == 'Diagnostic':
-            new_coverage = new_coverage[['country', 
-                                 'diagnostic_coverage', 
-                                 'diagnostic_prob_cover']]
         # Select vaccine coverage columns if it is a vaccine
-        elif param_dict[code]['intervention_type'][0] == 'Vaccine':
+        elif intervention_type == 'Vaccine':
             new_coverage = new_coverage[['country', 
                                  'vaccine_coverage', 
                                  'vaccine_prob_cover']]
+        # Select RDT coverage columns if it is a RDT 
+        elif intervention_type == 'Rapid diagnostic test':
+            new_coverage = new_coverage[['country', 
+                                 'rapid_diagnostic_test_coverage', 
+                                 'rapid_diagnostic_test_prob_cover']]
+        # Select device coverage columns if it is a device
+        elif intervention_type == 'Device':
+            new_coverage = new_coverage[['country', 
+                                 'device_coverage', 
+                                 'device_prob_cover']]
         else:
             raise ValueError('The value of intervention_type for '+code+' is not valid')
         # Create new column names and rename
-        new_column_names = {column: re.sub(('vaccine_|diagnostic_|'
+        new_column_names = {column: re.sub(('vaccine_|rapid_diagnostic_test_|device_|'
                                            'therapeutic_mental_health_|therapeutic_'), 
                                            '', column) 
                             for column in list(new_coverage)}

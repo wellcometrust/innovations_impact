@@ -246,7 +246,8 @@ def check_coverage(coverage):
            population - a df of coverage data
     """
     expected_names = ['vaccine_coverage',  'vaccine_prob_cover',
-                     'diagnostic_coverage', 'diagnostic_prob_cover',
+                     'device_coverage', 'device_prob_cover',
+                     'rapid_diagnostic_test_coverage', 'rapid_diagnostic_test_prob_cover',
                      'therapeutic_coverage', 'therapeutic_prob_cover',
                      'therapeutic_mental_health_coverage', 
                      'therapeutic_mental_health_prob_cover']

@@ -19,10 +19,11 @@ def create_target_population(cov_pop_burden_df, param_df, index):
        Returns:
            a cov_pop_burden_df with target_pop column added
     """
-    # Select incidence as the target population if it is a therapeutic or diagnostic
-    if re.search('Therapeutic', param_df.loc[index, 'intervention_type']):
+    intervention_type = param_df.loc[index, 'intervention_type'] 
+    # Select incidence as the target population if it is a therapeutic or diagnostic   
+    if re.search('Therapeutic', intervention_type):
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
-    elif param_df.loc[index, 'intervention_type'] == 'Diagnostic':
+    elif intervention_type in ['Device', 'Rapid diagnostic test']:
         cov_pop_burden_df['target_pop'] = cov_pop_burden_df['incidence_number']
     # Select population column if it is a vaccine 
     #~ This assumes it is an infant vaccination
@@ -98,14 +99,15 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
         param_df = param_dict[code]
         for index in param_df.index.tolist():
             cov_pop_burden_df = cov_pop_burden_dict[code][index].copy()
+            intervention_type = param_df.loc[index, 'intervention_type'] 
             cov_pop_burden_df = create_target_population(cov_pop_burden_df, 
                                                          param_df, 
                                                          index)
-            if param_df.loc[index, 'intervention_type'] == 'Diagnostic':
+            if intervention_type in ['Device', 'Rapid diagnostic test']:
                 cov_pop_burden_df = apply_diagnostic_inflation(cov_pop_burden_df, 
                                                                param_df, 
                                                                index)
-            elif param_df.loc[index, 'intervention_type'] == 'Vaccine':
+            elif intervention_type  == 'Vaccine':
                 cov_pop_burden_df = apply_endemicity_threshold(cov_pop_burden_df, 
                                                                param_df, 
                                                                index)
@@ -114,3 +116,6 @@ def adjust_for_intervention_factors(cov_pop_burden_dict, param_dict):
                                                        index)
             cov_pop_burden_dict[code][index] = cov_pop_burden_df
     return cov_pop_burden_dict
+
+
+

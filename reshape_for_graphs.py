@@ -171,7 +171,7 @@ def get_bridging_data(base_cov_pop_burden_dict, burden_dict_unadjusted, param_us
             # Create vaccine specific columns
             stage, remainder = vaccine_bridge_adjustments(cov_pop_burden_df, 
                                                           intervention_cut)
-        elif intervention_type == 'Diagnostic':
+        elif intervention_type in ['Device', 'Rapid diagnostic test']:
             # Aggregate the columns to make a relevant for the graph
             stage, remainder = diagnostic_bridge_adjustments(cov_pop_burden_df, 
                                                              intervention_cut)
