@@ -37,7 +37,7 @@ BACKUP_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/li
 SLIDES_DIR = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
 
 PARAM_CSV_NAME = 'LTLI_parameters.csv'
-ESTIMATES_CSV_NAME = 'LTLI_outputs.csv'
+ESTIMATES_CSV_NAME = 'LTLI_outputs_baseline.csv'
 POPULATION_CSV_NAME = 'GBD_population_2016_reshaped.csv'
 BURDEN_CSV_NAME = 'gbd_data_wide_2017.csv'
 COVERAGE_XLS_NAME = 'intervention_coverage_assumptions.xlsm'
@@ -78,8 +78,9 @@ if __name__ == "__main__":
 
     # Loads the relevant model parameters
     param_user_all = model_inputs.load_params(PARAM_CSV_NAME, DATA_DIR)
-    estimates_output = model_inputs.load_params(ESTIMATES_CSV_NAME, OUTPUTS_DIR)
     
+    # Loads the latest estimates before this model run (csv is structured same as params)
+    estimates_output = model_inputs.load_params(ESTIMATES_CSV_NAME, DATA_DIR)
     
     # Transforms the parameters to a dict for future transformation
     param_user_dict = model_inputs.create_param_dict(param_user_all)
@@ -181,7 +182,8 @@ if __name__ == "__main__":
     
     # Turn the graphs into formatted slides
     exports.create_all_slides(param_dict, 
-                      SLIDES_DIR, 
+                      SLIDES_DIR,
+                      DATA_DIR,
                       GRAPH_DIR, 
                       PPT_TEMPLATE_NAME)
     
@@ -195,7 +197,8 @@ if __name__ == "__main__":
     exports.export_estimates(estimates_output, 
                              ANALYSIS_TYPE, 
                              BACKUP_DIR, 
-                             OUTPUTS_DIR, 
+                             OUTPUTS_DIR,
+                             DATA_DIR,
                              ESTIMATES_CSV_NAME)
 
     print('All the exports have been completed, the entire process is complete')

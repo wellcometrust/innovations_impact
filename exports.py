@@ -47,18 +47,19 @@ def draw_graphs_export(probabilistic_dict, deterministic_dict, bridge_graph_dict
         graph.bridge_plot(graph_data, graph_dir, file_name)
 
 # Section 13:
-def graphs_to_slides(project_id, slides_dir, graph_dir, template_name):
+def graphs_to_slides(project_id, slides_dir, data_dir, graph_dir, template_name):
     """Imports the Monday Meeting ppt template and adds graphs for a given project 
        creates a new dir in slides_dir for a new project and writes ppt there
        Inputs:
            project_id - str - an id_code for a model that has been run
            slides_dir - str - a directory to write the formatted ppt
+           data_dir - str - a directory where the ppt template can be found
            graph_dir - str - a directory where the graphs are saved
            template_name - str - the file name for the MM template ppt
        Writes:
            creates a directory in slides_dir and uploads a ppt file there
     """
-    template_location = os.path.join(graph_dir, template_name)
+    template_location = os.path.join(data_dir, template_name)
     prs = Presentation(template_location)
         
     main_slide = prs.slides[0]
@@ -123,10 +124,10 @@ def graphs_to_slides(project_id, slides_dir, graph_dir, template_name):
     prs.save(upload_path)
     
 
-def create_all_slides(param_dict, slides_dir, graph_dir, template_name):
+def create_all_slides(param_dict, slides_dir, data_dir, graph_dir, template_name):
     """Updates slides for each model that has been run"""
     for project_id in param_dict.keys():
-        graphs_to_slides(project_id, slides_dir, graph_dir, template_name)
+        graphs_to_slides(project_id, slides_dir, data_dir, graph_dir, template_name)
 
 # Section 14:    
 def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_output, param_user, param_user_all):
@@ -159,7 +160,7 @@ def update_estimates_output(deterministic_dict, probabilistic_dict, estimates_ou
     return new_estimates_output
 
 
-def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, estimates_csv_name):
+def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, data_dir, estimates_csv_name):
     """Overwrite the output csv with the updated estimates
        Inputs:
            param_user_all - a df of parameters and estimates
@@ -167,6 +168,7 @@ def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, e
                parameters, requires key for 'overwrite_estimates'
            backup_dir - str - a file path where backups of parameters should be written
            outputs_dir - str - a file path where output estimates should be written
+           data_dir - str - a file path where the base_line output estimates should be written
            estimates_csv_name - str - the name of the output csv
        Writes:
            csvs to in the backup_dir and outputs_dir
@@ -175,10 +177,11 @@ def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, e
     # ones that have been run
     # Write back up csv
     time_now = datetime.datetime.now()
-    data_str = time_now.strftime('%Y_%m_%d_%H_%M')
-    back_up_path = os.path.join(backup_dir, 'LTLI_parameters_python_' + data_str + '.csv')
+    date_str = time_now.strftime('%Y_%m_%d_%H_%M')
+    back_up_path = os.path.join(backup_dir, 'LTLI_parameters_python_' + date_str + '.csv')
     estimates_output.to_csv(back_up_path)
     # Overwrite imported csv
     if analysis_type['overwrite_estimates']:
-        output_path = os.path.join(outputs_dir, estimates_csv_name)
+        output_path = os.path.join(outputs_dir, 'LTLI_outputs.csv')
+        output_path = os.path.join(data_dir, estimates_csv_name)
         estimates_output.to_csv(output_path)

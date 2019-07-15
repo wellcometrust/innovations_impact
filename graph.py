@@ -5,6 +5,8 @@ Created on Tue Jun 18 11:12:46 2019
 @author: LaurencT
 """
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import re
 import os
