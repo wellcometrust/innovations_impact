@@ -241,7 +241,7 @@ def create_coverage_population_dict(coverage, population, param_dict):
                             for column in list(new_coverage)}
         new_coverage = new_coverage.rename(columns = new_column_names)
         # Merge the coverage and population data
-        cov_pop_df = pd.concat([new_coverage, population], axis = 1)
+        cov_pop_df = pd.concat([new_coverage, population], axis = 1, sort = True)
         cov_pop_dict[code] = cov_pop_df
     return cov_pop_dict
 

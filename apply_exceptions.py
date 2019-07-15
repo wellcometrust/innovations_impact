@@ -56,7 +56,7 @@ def apply_geography_exceptions(cov_pop_burden_dict, estimates_output):
                                  0)
                                                   )
             new_comment = 'Only allowed for coverage in South Asia as in the TPP'
-            update_exceptions(estimates_output, code, new_comment)
+            estimates_output= update_exceptions(estimates_output, code, new_comment)
         elif code == '2123460002C':
             # Regional exception based on assumed product profile
             super_regions = ["Sub-Saharan Africa"]
@@ -68,8 +68,8 @@ def apply_geography_exceptions(cov_pop_burden_dict, estimates_output):
                                  0)
                                                   )
             new_comment = 'Only allowed for coverage in Africa as in the TPP.'
-            update_exceptions(estimates_output, code, new_comment)
+            estimates_output = update_exceptions(estimates_output, code, new_comment)
         else:
             # As there is no expceptions relevant here
             pass
-    return(cov_pop_burden_dict)
+    return(estimates_output, cov_pop_burden_dict)

@@ -147,8 +147,11 @@ if __name__ == "__main__":
     estimates_output = apply_exceptions.clear_exceptions(estimates_output, param_user)
     
     # Apply various geographical exceptions see the updated
-    cov_pop_burden_dict = apply_exceptions.apply_geography_exceptions(cov_pop_burden_dict, 
+    estimates_output, cov_pop_burden_dict = apply_exceptions.apply_geography_exceptions(cov_pop_burden_dict, 
                                                                       estimates_output)
+    
+    # Write in the exceptions
+    estimates_output = apply_exceptions.clear_exceptions(estimates_output, param_user)
     
     # Calculate lives_touched and input them to 
     param_dict = calculate_ltli.update_lives_touched(cov_pop_burden_dict, param_dict)
@@ -186,7 +189,8 @@ if __name__ == "__main__":
     estimates_output = exports.update_estimates_output(deterministic_dict, 
                                                        probabilistic_dict, 
                                                        estimates_output,
-                                                       param_user)
+                                                       param_user,
+                                                       param_user_all)
     
     exports.export_estimates(estimates_output, 
                              ANALYSIS_TYPE, 
@@ -195,3 +199,4 @@ if __name__ == "__main__":
                              ESTIMATES_CSV_NAME)
 
     print('All the exports have been completed, the entire process is complete')
+    
