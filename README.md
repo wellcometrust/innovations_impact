@@ -77,6 +77,8 @@ lives_touched_lives_improved.py -h
                         mm_template_impact.pptx
 ```
 
+The arguments all relate to the file names / folder structure mentioned in the setup section.
+
 It can be also run from an IDE - at a minimum the file names and directory paths will need updating to be consistent with the folder structures on your machine - see more detailed instructions on that [here](https://wellcomecloud.sharepoint.com/:p:/r/sites/innovations/PAD/PAD%20Archive/Data%20Analyst%20Handover/lives_touched_lives_improved_support/Instruction%20for%20updating%20LTLI%20V2.pptm?d=we7c4a802284d48528e301f0a36865c16&csf=1&e=0H6OI9).
 
 To change the default behaviour of the lives_touched_lives_improved.py change the default terms in ANALYSIS_TYPE.
