@@ -183,5 +183,6 @@ def export_estimates(estimates_output, analysis_type, backup_dir, outputs_dir, d
     # Overwrite imported csv
     if analysis_type['overwrite_estimates']:
         output_path = os.path.join(outputs_dir, 'LTLI_outputs.csv')
-        output_path = os.path.join(data_dir, estimates_csv_name)
+        baseline_path = os.path.join(data_dir, estimates_csv_name)
         estimates_output.to_csv(output_path)
+        estimates_output.to_csv(baseline_path)
