@@ -150,10 +150,7 @@ if __name__ == "__main__":
     # Apply various geographical exceptions see the updated
     estimates_output, cov_pop_burden_dict = apply_exceptions.apply_geography_exceptions(cov_pop_burden_dict, 
                                                                       estimates_output)
-    
-    # Write in the exceptions
-    estimates_output = apply_exceptions.clear_exceptions(estimates_output, param_user)
-    
+        
     # Calculate lives_touched and input them to 
     param_dict = calculate_ltli.update_lives_touched(cov_pop_burden_dict, param_dict)
     
