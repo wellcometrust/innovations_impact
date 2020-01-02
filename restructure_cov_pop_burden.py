@@ -22,15 +22,15 @@ def get_relevant_burden(param_dict, burden_all):
            a dict - keys: id_codes, values dfs of burden data
     """
     # Create dictionary of lists to filter disease column by
-    disease_lists = {k: [param_dict[k]['disease_1'][0],
-                         param_dict[k]['disease_2'][0],
-                         param_dict[k]['disease_3'][0]]
+    disease_lists = {k: [param_dict[k]['disease_1'][1],
+                         param_dict[k]['disease_2'][1],
+                         param_dict[k]['disease_3'][1]]
                      for k in param_dict.keys()}
     # Create dictionary of burden dfs
     burden_dict = {k: burden_all[burden_all['cause'].isin(disease_lists[k])]
                    for k in disease_lists.keys()}
     # Filter based on age
-    burden_dict = {k: burden_dict[k][burden_dict[k]['age'] == param_dict[k]['age'][0]]
+    burden_dict = {k: burden_dict[k][burden_dict[k]['age'] == param_dict[k]['age'][1]]
                    for k in burden_dict.keys()}
     return burden_dict
 
@@ -205,7 +205,7 @@ def create_coverage_population_dict(coverage, population, param_dict):
     for code in param_dict.keys():
         new_coverage = coverage.copy()
         population = population.copy()   
-        intervention_type = param_dict[code]['intervention_type'][0]
+        intervention_type = param_dict[code]['intervention_type'][1]
         # Select therapeutic coverage columns if it is a Therapeutic (therapeutic)
         if  intervention_type == 'Therapeutic':
             new_coverage = new_coverage[['country',

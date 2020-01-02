@@ -1,4 +1,4 @@
-VIRTUALENV := build/virtualenv
+dVIRTUALENV := build/virtualenv
 
 $(VIRTUALENV)/.installed: requirements.txt
 	if [ -d $(VIRTUALENV) ]; then rm -rf $(VIRTUALENV); fi

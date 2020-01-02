@@ -74,8 +74,8 @@ def load_coverage_assumptions(excel_name, sheet_name, directory):
     xls_path = os.path.join(directory, excel_name)
     coverage = pd.read_excel(xls_path, sheet_name)
     
-    coverage.columns = coverage.iloc[10]
-    coverage = coverage.iloc[11:, 1:]
+    coverage.columns = coverage.iloc[11]
+    coverage = coverage.iloc[12:, 1:]
     
     cov_new_columns = [column for column in list(coverage) if re.search('cover|^country', column)]
     coverage = coverage[cov_new_columns]

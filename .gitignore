@@ -4,3 +4,4 @@ graphs/*
 backup/*
 build/*
 slides/*
+__pycache__/*

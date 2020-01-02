@@ -11,7 +11,8 @@ import pandas as pd
 import sys
 
 # Import other modules written for LTLI
-sys.path.append('C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/scripts')
+main_dir = '/Users/robbena/code/LTLI/'
+sys.path.append(main_dir + 'scripts/')
 from argument_parser import ltli_argument_parser
 from argument_parser import print_selected_arguments
 import model_inputs
@@ -27,16 +28,16 @@ from adjust_for_intervention_factors import adjust_for_intervention_factors
 import apply_exceptions
 import calculate_ltli
 import reshape_for_graphs
-import exports
+# import exports
 
 # Set up directories, file names and analysis type
-DATA_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/'
-GRAPH_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/graphs/'
-OUTPUTS_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/outputs/'
-BACKUP_DIR = 'C:/Users/laurenct/OneDrive - Wellcome Cloud/My Documents/python/lives_touched_lives_improved/data/backup/'
-SLIDES_DIR = 'C:/Users/laurenct/Wellcome Cloud/Innovations - Lives touched, lives improved model results/'
+DATA_DIR = main_dir+'data/'
+GRAPH_DIR = main_dir+'graphs'
+OUTPUTS_DIR = main_dir+'outputs/'
+BACKUP_DIR = main_dir+'backup/'
+SLIDES_DIR = main_dir+'results/'
 
-PARAM_CSV_NAME = 'LTLI_parameters.csv'
+PARAM_CSV_NAME = 'LTLI_parameters - AR.csv'
 ESTIMATES_CSV_NAME = 'LTLI_outputs_baseline.csv'
 POPULATION_CSV_NAME = 'GBD_population_2016_reshaped.csv'
 BURDEN_CSV_NAME = 'gbd_data_wide_2017.csv'
@@ -172,17 +173,17 @@ if __name__ == "__main__":
                                                              param_user_dict)
     
     # Draws graphs and exports them to graphs_dir for all of the analyses
-    exports.draw_graphs_export(probabilistic_dict,
-                       deterministic_dict, 
-                       bridge_graph_dict, 
-                       GRAPH_DIR)
+    # exports.draw_graphs_export(probabilistic_dict,
+    #                    deterministic_dict, 
+    #                    bridge_graph_dict, 
+    #                    GRAPH_DIR)
     
     # Turn the graphs into formatted slides
-    exports.create_all_slides(param_dict, 
-                      SLIDES_DIR,
-                      DATA_DIR,
-                      GRAPH_DIR, 
-                      PPT_TEMPLATE_NAME)
+    # exports.create_all_slides(param_dict, 
+    #                   SLIDES_DIR,
+    #                   DATA_DIR,
+    #                   GRAPH_DIR, 
+    #                   PPT_TEMPLATE_NAME)
     
     # Update param_user_all ready for export
     estimates_output = exports.update_estimates_output(deterministic_dict, 
@@ -191,12 +192,12 @@ if __name__ == "__main__":
                                                        param_user,
                                                        param_user_all)
     
-    exports.export_estimates(estimates_output, 
-                             ANALYSIS_TYPE, 
-                             BACKUP_DIR, 
-                             OUTPUTS_DIR,
-                             DATA_DIR,
-                             ESTIMATES_CSV_NAME)
+    # exports.export_estimates(estimates_output, 
+    #                          ANALYSIS_TYPE, 
+    #                          BACKUP_DIR, 
+    #                          OUTPUTS_DIR,
+    #                          DATA_DIR,
+    #                          ESTIMATES_CSV_NAME)
 
     print('All the exports have been completed, the entire process is complete')
     
