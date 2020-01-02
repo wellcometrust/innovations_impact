@@ -28,7 +28,7 @@ from adjust_for_intervention_factors import adjust_for_intervention_factors
 import apply_exceptions
 import calculate_ltli
 import reshape_for_graphs
-# import exports
+import exports
 
 # Set up directories, file names and analysis type
 DATA_DIR = main_dir+'data/'
@@ -173,17 +173,17 @@ if __name__ == "__main__":
                                                              param_user_dict)
     
     # Draws graphs and exports them to graphs_dir for all of the analyses
-    # exports.draw_graphs_export(probabilistic_dict,
-    #                    deterministic_dict, 
-    #                    bridge_graph_dict, 
-    #                    GRAPH_DIR)
+    exports.draw_graphs_export(probabilistic_dict,
+                       deterministic_dict, 
+                       bridge_graph_dict, 
+                       GRAPH_DIR)
     
     # Turn the graphs into formatted slides
-    # exports.create_all_slides(param_dict, 
-    #                   SLIDES_DIR,
-    #                   DATA_DIR,
-    #                   GRAPH_DIR, 
-    #                   PPT_TEMPLATE_NAME)
+    exports.create_all_slides(param_dict, 
+                      SLIDES_DIR,
+                      DATA_DIR,
+                      GRAPH_DIR, 
+                      PPT_TEMPLATE_NAME)
     
     # Update param_user_all ready for export
     estimates_output = exports.update_estimates_output(deterministic_dict, 
@@ -192,12 +192,12 @@ if __name__ == "__main__":
                                                        param_user,
                                                        param_user_all)
     
-    # exports.export_estimates(estimates_output, 
-    #                          ANALYSIS_TYPE, 
-    #                          BACKUP_DIR, 
-    #                          OUTPUTS_DIR,
-    #                          DATA_DIR,
-    #                          ESTIMATES_CSV_NAME)
+    exports.export_estimates(estimates_output, 
+                             ANALYSIS_TYPE, 
+                             BACKUP_DIR, 
+                             OUTPUTS_DIR,
+                             DATA_DIR,
+                             ESTIMATES_CSV_NAME)
 
     print('All the exports have been completed, the entire process is complete')
     
